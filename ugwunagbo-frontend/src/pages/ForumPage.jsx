@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ChatRoom from './ChatRoom';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   FaComments, FaPlus, FaSearch, FaUser, FaCalendarAlt, 
@@ -492,7 +493,7 @@ const ForumPage = () => {
           <div className="flex justify-center items-center py-20">
             <FaSpinner className="text-4xl text-[#006400] animate-spin" />
           </div>
-        ) : sortedTopics.length === 0 ? (
+          ) : sortedTopics.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-2xl shadow-sm border border-gray-100">
             <FaComments className="text-6xl text-gray-300 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-600">
@@ -583,7 +584,15 @@ const ForumPage = () => {
         onClose={() => setIsModalOpen(false)}
         onTopicCreated={handleTopicCreated}
       />
-
+      {/* Add this after the topics section */}
+<div className="mt-8">
+  <div className="flex items-center gap-2 mb-4">
+    <div className="h-1 flex-1 bg-gradient-to-r from-[#006400]/20 to-transparent"></div>
+    <h2 className="text-lg font-bold text-gray-700">💬 Live Chat</h2>
+    <div className="h-1 flex-1 bg-gradient-to-l from-[#006400]/20 to-transparent"></div>
+  </div>
+  <ChatRoom />
+</div>
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}

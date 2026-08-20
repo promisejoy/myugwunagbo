@@ -222,6 +222,16 @@ export const api = {
   likeTopic: (topicId) => apiClient.post(`/api/forum/topics/${topicId}/like`),
   getLikeStatus: (topicId) => apiClient.get(`/api/forum/topics/${topicId}/like-status`),
   getLikeCount: (topicId) => apiClient.get(`/api/forum/topics/${topicId}/likes`),
+
+  // Chat
+getChatMessages: () => apiClient.get('/api/chat/messages'),
+sendChatMessage: (data) => apiClient.post('/api/chat/messages', data),
+deleteChatMessage: (id) => apiClient.delete(`/api/chat/messages/${id}`),
+reactToMessage: (id, data) => apiClient.post(`/api/chat/messages/${id}/react`, data),
+getOnlineUsers: () => apiClient.get('/api/chat/users/online'),
+updateUserActivity: () => apiClient.post('/api/chat/users/active'),
 };
+
+
 
 export default apiClient;
