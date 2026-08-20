@@ -33,18 +33,13 @@ app.use(helmet({
 // ============================================
 // ✅ FIXED CORS CONFIGURATION
 // ============================================
-// CORS CONFIGURATION - Allow all Vercel URLs
-// ============================================
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'http://localhost:5000',
   'https://myugwunagbo-8mw4.vercel.app',
-  // Allow all Vercel preview URLs
-  /\.vercel\.app$/,
-  /\.vercel\.app\/.*$/,
   process.env.CLIENT_URL
-].filter(Boolean);
+].filter(Boolean).map(origin => origin.replace(/\/$/, '')); // Remove trailing slashes
 
 console.log('🌐 Allowed CORS origins:', allowedOrigins);
 
@@ -58,13 +53,10 @@ app.use(cors({
     // Clean the origin (remove trailing slash)
     const cleanOrigin = origin.replace(/\/$/, '');
     
-    // Check if the clean origin is allowed (including regex patterns)
-    const isAllowed = allowedOrigins.some(allowed => {
-      if (allowed instanceof RegExp) {
-        return allowed.test(cleanOrigin);
-      }
-      return allowed.toLowerCase() === cleanOrigin.toLowerCase();
-    });
+    // Check if the clean origin is allowed (case-insensitive)
+    const isAllowed = allowedOrigins.some(allowed => 
+      allowed.toLowerCase() === cleanOrigin.toLowerCase()
+    );
     
     if (isAllowed) {
       callback(null, true);
