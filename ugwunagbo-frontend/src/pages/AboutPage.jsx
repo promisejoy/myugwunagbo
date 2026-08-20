@@ -113,7 +113,7 @@ const AboutPage = () => {
 
             <div className="bg-blue-50 border-l-4 border-[#006400] p-4 my-4 rounded-r-lg">
               <h3 className="text-lg font-bold text-[#006400] mb-2">Why Ugwunagbo was Created</h3>
-              <p className="text-gray-700"><strong>1. Administrative Convenience:</strong> To bring government closer to the people</p>
+              <p className="text-gray-700"><strong>1. Administrative Convenience:</strong> To bring government closer to the people of ugwunagbo</p>
               <p className="text-gray-700"><strong>2. Developmental Needs:</strong> To address specific infrastructural and social needs</p>
               <p className="text-gray-700"><strong>3. Cultural Identity:</strong> To preserve and promote the unique cultural heritage</p>
               <p className="text-gray-700"><strong>4. Political Representation:</strong> To ensure adequate representation in state affairs</p>
