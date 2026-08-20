@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaUser, FaEnvelope, FaPhone, FaFileAlt, FaClipboardList, FaSpinner, FaCheckCircle, FaPaperPlane } from 'react-icons/fa';
+import { FaUser, FaEnvelope, FaPhone, FaFileAlt, FaClipboardList, FaSpinner, FaCheckCircle, FaPaperPlane, FaUpload, FaFile, FaTrash } from 'react-icons/fa';
 import { api } from '../api/client';
 import toast from 'react-hot-toast';
 
@@ -9,13 +9,19 @@ const ApplyForService = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [applicationId, setApplicationId] = useState('');
+  const [servicePrices, setServicePrices] = useState({});
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
     service_type: '',
-    description: ''
+    description: '',
+    traditional_ruler_name: '',
+    traditional_ruler_title: '',
+    authorization_file: null,
+    authorization_file_name: ''
   });
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const serviceTypes = [
     'Birth Certificate',
@@ -30,11 +36,64 @@ const ApplyForService = () => {
     'Other'
   ];
 
+  // Fetch service prices from backend
+  useEffect(() => {
+    const fetchPrices = async () => {
+      try {
+        const response = await api.getServicePrices();
+        if (response.data) {
+          setServicePrices(response.data);
+        }
+      } catch (error) {
+        console.error('Error fetching service prices:', error);
+      }
+    };
+    fetchPrices();
+  }, []);
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
     });
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('File size must be less than 5MB');
+        e.target.value = '';
+        return;
+      }
+      
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+      if (!allowedTypes.includes(file.type)) {
+        toast.error('Please upload a JPEG, PNG, or PDF file');
+        e.target.value = '';
+        return;
+      }
+
+      setFormData({
+        ...formData,
+        authorization_file: file,
+        authorization_file_name: file.name
+      });
+      setSelectedFile(file);
+    }
+  };
+
+  const removeFile = () => {
+    setFormData({
+      ...formData,
+      authorization_file: null,
+      authorization_file_name: ''
+    });
+    setSelectedFile(null);
+    const fileInput = document.getElementById('authorizationFile');
+    if (fileInput) fileInput.value = '';
   };
 
   const handleSubmit = async (e) => {
@@ -43,6 +102,22 @@ const ApplyForService = () => {
     if (!formData.name || !formData.email || !formData.service_type) {
       toast.error('Please fill in all required fields');
       return;
+    }
+
+    // If Local Government of Origin, validate traditional ruler fields
+    if (formData.service_type === 'Local Government of Origin') {
+      if (!formData.traditional_ruler_name) {
+        toast.error('Please provide the Traditional Ruler\'s name');
+        return;
+      }
+      if (!formData.traditional_ruler_title) {
+        toast.error('Please provide the Traditional Ruler\'s title');
+        return;
+      }
+      if (!formData.authorization_file) {
+        toast.error('Please upload the Traditional Ruler\'s authorization letter');
+        return;
+      }
     }
 
     // Validate email
@@ -54,10 +129,23 @@ const ApplyForService = () => {
 
     setSubmitting(true);
     try {
-      const response = await api.submitApplication(formData);
+      // Create FormData for file upload
+      const submitData = new FormData();
+      submitData.append('name', formData.name);
+      submitData.append('email', formData.email);
+      submitData.append('phone', formData.phone || '');
+      submitData.append('service_type', formData.service_type);
+      submitData.append('description', formData.description || '');
+      submitData.append('traditional_ruler_name', formData.traditional_ruler_name || '');
+      submitData.append('traditional_ruler_title', formData.traditional_ruler_title || '');
+      
+      if (formData.authorization_file) {
+        submitData.append('authorization_file', formData.authorization_file);
+      }
+
+      const response = await api.submitApplicationWithFile(submitData);
       console.log('Application response:', response.data);
       
-      // Generate application ID if not returned from server
       const appId = response.data?.id || generateApplicationId();
       setApplicationId(appId);
       setSubmitted(true);
@@ -69,8 +157,13 @@ const ApplyForService = () => {
         email: '',
         phone: '',
         service_type: '',
-        description: ''
+        description: '',
+        traditional_ruler_name: '',
+        traditional_ruler_title: '',
+        authorization_file: null,
+        authorization_file_name: ''
       });
+      setSelectedFile(null);
     } catch (error) {
       console.error('Error submitting application:', error);
       toast.error(error.response?.data?.error || 'Failed to submit application. Please try again.');
@@ -79,11 +172,16 @@ const ApplyForService = () => {
     }
   };
 
-  // Generate application ID
   const generateApplicationId = () => {
     const timestamp = Date.now().toString(36);
     const random = Math.random().toString(36).substr(2, 5);
     return `UGW-${timestamp}-${random}`.toUpperCase();
+  };
+
+  // Get price for selected service
+  const getServicePrice = (serviceType) => {
+    const prices = servicePrices[serviceType] || { amount: 0, currency: 'NGN' };
+    return prices.amount || 0;
   };
 
   if (submitted) {
@@ -97,20 +195,20 @@ const ApplyForService = () => {
           <p className="text-gray-600 mb-4">
             Your application has been received. You will be contacted shortly.
           </p>
-{applicationId && (
-  <div className="bg-[#006400] text-white p-3 rounded-lg mb-4">
-    <p className="text-sm font-semibold">Application ID:</p>
-    <p className="text-lg font-mono">{applicationId}</p>
-    <p className="text-xs text-[#ffcc00] mt-1">Please use this ID for payment reference</p>
-  </div>
-)}
+          {applicationId && (
+            <div className="bg-[#006400] text-white p-3 rounded-lg mb-4">
+              <p className="text-sm font-semibold">Application ID:</p>
+              <p className="text-lg font-mono">{applicationId}</p>
+              <p className="text-xs text-[#ffcc00] mt-1">Please use this ID for payment reference</p>
+            </div>
+          )}
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-left">
             <h4 className="font-semibold text-yellow-800 mb-2">Payment Instructions:</h4>
             <ul className="text-sm text-yellow-700 space-y-1">
               <li>• Bank: First Bank of Nigeria</li>
               <li>• Account: Ugwunagbo Local Government</li>
               <li>• Account Number: 3112345678</li>
-              <li>• Amount: ₦5,000.00</li>
+              <li>• Amount: ₦{getServicePrice(formData.service_type).toLocaleString()}</li>
               <li>• Reference: Use your Application ID above</li>
             </ul>
           </div>
@@ -132,6 +230,9 @@ const ApplyForService = () => {
       </div>
     );
   }
+
+  const isLGA = formData.service_type === 'Local Government of Origin';
+  const servicePrice = getServicePrice(formData.service_type);
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
@@ -211,10 +312,111 @@ const ApplyForService = () => {
               >
                 <option value="">Select a service</option>
                 {serviceTypes.map((service) => (
-                  <option key={service} value={service}>{service}</option>
+                  <option key={service} value={service}>
+                    {service} {servicePrice > 0 ? `(₦${servicePrice.toLocaleString()})` : ''}
+                  </option>
                 ))}
               </select>
+              {servicePrice > 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Service fee: ₦{servicePrice.toLocaleString()}
+                </p>
+              )}
             </div>
+
+            {/* Traditional Ruler Authorization - Only for LGA */}
+            {isLGA && (
+              <div className="border border-[#006400] rounded-xl p-4 bg-gray-50">
+                <h4 className="font-semibold text-[#006400] mb-3 flex items-center">
+                  <FaClipboardList className="mr-2" />
+                  Traditional Ruler Authorization
+                </h4>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Traditional Ruler Name *
+                    </label>
+                    <input
+                      type="text"
+                      name="traditional_ruler_name"
+                      value={formData.traditional_ruler_name}
+                      onChange={handleChange}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#006400] focus:border-transparent outline-none transition-all"
+                      placeholder="Enter the Traditional Ruler's full name"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Traditional Ruler Title *
+                    </label>
+                    <input
+                      type="text"
+                      name="traditional_ruler_title"
+                      value={formData.traditional_ruler_title}
+                      onChange={handleChange}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#006400] focus:border-transparent outline-none transition-all"
+                      placeholder="e.g., HRH, Eze, Chief"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <FaUpload className="inline mr-2 text-[#006400]" />
+                      Authorization Letter *
+                    </label>
+                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:border-[#006400] transition-colors">
+                      <input
+                        id="authorizationFile"
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.pdf"
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+                      {selectedFile ? (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <FaFile className="text-[#006400] text-2xl" />
+                            <div className="text-left">
+                              <p className="text-sm font-medium text-gray-700">{selectedFile.name}</p>
+                              <p className="text-xs text-gray-500">
+                                {(selectedFile.size / 1024).toFixed(2)} KB
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={removeFile}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <FaTrash />
+                          </button>
+                        </div>
+                      ) : (
+                        <label
+                          htmlFor="authorizationFile"
+                          className="cursor-pointer block"
+                        >
+                          <FaUpload className="text-3xl text-gray-400 mx-auto mb-2" />
+                          <p className="text-sm text-gray-500">
+                            Click to upload authorization letter
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            JPEG, PNG, or PDF (Max 5MB)
+                          </p>
+                        </label>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      * Required for Local Government of Origin applications
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

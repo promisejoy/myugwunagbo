@@ -158,6 +158,62 @@ const AdminPage = () => {
     type: 'danger',
     onConfirm: null
   });
+  // ---------- SERVICE PRICES MANAGEMENT ----------
+const [servicePrices, setServicePrices] = useState({});
+const [priceForm, setPriceForm] = useState({
+  service_type: '',
+  amount: '',
+  currency: 'NGN',
+  description: ''
+});
+
+// Fetch service prices
+const loadServicePrices = async () => {
+  try {
+    const response = await api.getServicePrices();
+    if (response.data) {
+      setServicePrices(response.data);
+    }
+  } catch (error) {
+    console.error('Error loading service prices:', error);
+  }
+};
+
+// Update service price
+const handlePriceUpdate = async (e) => {
+  e.preventDefault();
+  if (!priceForm.service_type || !priceForm.amount) {
+    toast.error('Please select a service and enter an amount');
+    return;
+  }
+  
+  setLoading(true);
+  try {
+    await api.updateServicePrice(priceForm.service_type, {
+      amount: parseFloat(priceForm.amount),
+      currency: priceForm.currency,
+      description: priceForm.description
+    });
+    toast.success('Service price updated successfully!');
+    setPriceForm({ service_type: '', amount: '', currency: 'NGN', description: '' });
+    await loadServicePrices();
+  } catch (error) {
+    console.error('Error updating service price:', error);
+    toast.error(error.response?.data?.error || 'Failed to update service price');
+  } finally {
+    setLoading(false);
+  }
+};
+
+const editPrice = (serviceType) => {
+  const price = servicePrices[serviceType] || {};
+  setPriceForm({
+    service_type: serviceType,
+    amount: price.amount || '',
+    currency: price.currency || 'NGN',
+    description: price.description || ''
+  });
+};
 
   const [budgetForm, setBudgetForm] = useState({
     id: '',
@@ -1002,6 +1058,8 @@ const AdminPage = () => {
     { id: 'academia', label: 'Academia', icon: FaGraduationCap },
     { id: 'gallery', label: 'Gallery', icon: FaPhotoVideo },
     { id: 'profile', label: 'Profile Settings', icon: FaUserShield },
+    // Add to tabs array
+    { id: 'service-prices', label: 'Service Prices', icon: FaMoneyBillWave },
   ];
 
   // ======================== RENDER ========================
@@ -2562,7 +2620,105 @@ const AdminPage = () => {
                 </div>
               </div>
             )}
+            
+            {/* Service Prices Tab */}
+{activeTab === 'service-prices' && (
+  <div>
+    <div className="bg-white rounded-2xl p-6 shadow-md mb-6">
+      <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+        <FaMoneyBillWave className="text-[#006400] mr-3" />
+        Manage Service Prices
+      </h3>
+      <form onSubmit={handlePriceUpdate} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Service Type *</label>
+            <select
+              value={priceForm.service_type}
+              onChange={(e) => setPriceForm({ ...priceForm, service_type: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#006400] focus:border-transparent outline-none transition-all"
+              required
+            >
+              <option value="">Select a service</option>
+              {serviceTypes.map((service) => (
+                <option key={service} value={service}>{service}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₦) *</label>
+            <input
+              type="number"
+              value={priceForm.amount}
+              onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#006400] focus:border-transparent outline-none transition-all"
+              placeholder="e.g., 5000"
+              required
+              min="0"
+              step="100"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+          <input
+            type="text"
+            value={priceForm.description}
+            onChange={(e) => setPriceForm({ ...priceForm, description: e.target.value })}
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#006400] focus:border-transparent outline-none transition-all"
+            placeholder="Brief description of what's included"
+          />
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-[#006400] hover:bg-[#005a00] text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-[#006400]/30 disabled:opacity-50 flex items-center space-x-2"
+          >
+            {loading ? <FaSpinner className="animate-spin" /> : <FaSave />}
+            <span>{loading ? 'Saving...' : 'Update Price'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setPriceForm({ service_type: '', amount: '', currency: 'NGN', description: '' })}
+            className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-xl transition-all duration-300"
+          >
+            Reset Form
+          </button>
+        </div>
+      </form>
+    </div>
 
+    <div className="bg-white rounded-2xl p-6 shadow-md">
+      <h3 className="text-xl font-bold text-gray-800 mb-4">Current Service Prices</h3>
+      {Object.keys(servicePrices).length === 0 ? (
+        <p className="text-gray-500 text-center py-8">No service prices set yet</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Object.entries(servicePrices).map(([service, price]) => (
+            <div key={service} className="bg-gray-50 rounded-xl p-4 hover:shadow-md transition-all duration-300 border border-gray-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-gray-800">{service}</p>
+                  <p className="text-2xl font-bold text-[#006400]">₦{price.amount?.toLocaleString()}</p>
+                  {price.description && (
+                    <p className="text-xs text-gray-500 mt-1">{price.description}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => editPrice(service)}
+                  className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                >
+                  <FaEdit />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+)}
             {/* Profile Settings */}
             {activeTab === 'profile' && (
               <div className="bg-white rounded-2xl p-6 shadow-md max-w-2xl mx-auto">

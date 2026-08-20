@@ -49,15 +49,15 @@ apiClient.interceptors.response.use(
 
 export const api = {
   // Auth
-login: (username, password) => 
-  apiClient.post('/api/auth/login', { username, password }),
+  login: (username, password) => 
+    apiClient.post('/api/auth/login', { username, password }),
 
-register: (userData) => 
-  apiClient.post('/api/auth/register', userData),
-  
+  register: (userData) => 
+    apiClient.post('/api/auth/register', userData),
+    
   changePassword: (currentPassword, newPassword) =>
     apiClient.put('/api/auth/change-password', { currentPassword, newPassword }),
-  
+    
   getAdminProfile: () => apiClient.get('/api/auth/profile'),
   updateAdminProfile: (data) => apiClient.put('/api/auth/update-profile', data),
   
@@ -102,43 +102,70 @@ register: (userData) =>
   },
   deleteNews: (id) => apiClient.delete(`/api/news/${id}`),
   
-
-// Budgets
-getBudgets: () => apiClient.get('/api/budgets'),
-uploadBudget: (data) => {
-  return apiClient.post('/api/budgets', data, {
-    headers: {}
-  });
-},
-deleteBudget: (id) => apiClient.delete(`/api/budgets/${id}`),
-
-
-  // Forum
-  getTopics: () => apiClient.get('/api/forum/topics'),
-  getTopic: (id) => apiClient.get(`/api/forum/topics/${id}`),
-  createTopic: (data) => apiClient.post('/api/forum/topics', data),
-  getReplies: (topicId) => apiClient.get(`/api/forum/topics/${topicId}/replies`),
-  addReply: (topicId, data) => apiClient.post(`/api/forum/topics/${topicId}/replies`, data),
-  
   // Traditional Rulers
   getTraditionalRulers: () => apiClient.get('/api/traditional-rulers'),
-  addTraditionalRuler: (data) => apiClient.post('/api/traditional-rulers', data),
+  addTraditionalRuler: (data) => {
+    return apiClient.post('/api/traditional-rulers', data, {
+      headers: {}
+    });
+  },
+  updateTraditionalRuler: (id, data) => {
+    return apiClient.put(`/api/traditional-rulers/${id}`, data, {
+      headers: {}
+    });
+  },
   deleteTraditionalRuler: (id) => apiClient.delete(`/api/traditional-rulers/${id}`),
   
   // NGOs
   getNGOs: () => apiClient.get('/api/ngos-foundations'),
-  addNGO: (data) => apiClient.post('/api/ngos-foundations', data),
+  addNGO: (data) => {
+    return apiClient.post('/api/ngos-foundations', data, {
+      headers: {}
+    });
+  },
+  updateNGO: (id, data) => {
+    return apiClient.put(`/api/ngos-foundations/${id}`, data, {
+      headers: {}
+    });
+  },
   deleteNGO: (id) => apiClient.delete(`/api/ngos-foundations/${id}`),
   
   // Academia
   getAcademia: () => apiClient.get('/api/academia'),
-  addAcademician: (data) => apiClient.post('/api/academia', data),
+  addAcademician: (data) => {
+    return apiClient.post('/api/academia', data, {
+      headers: {}
+    });
+  },
+  updateAcademician: (id, data) => {
+    return apiClient.put(`/api/academia/${id}`, data, {
+      headers: {}
+    });
+  },
   deleteAcademician: (id) => apiClient.delete(`/api/academia/${id}`),
   
   // Gallery
   getGallery: () => apiClient.get('/api/gallery'),
-  addGalleryItem: (data) => apiClient.post('/api/gallery', data),
+  addGalleryItem: (data) => {
+    return apiClient.post('/api/gallery', data, {
+      headers: {}
+    });
+  },
+  updateGalleryItem: (id, data) => {
+    return apiClient.put(`/api/gallery/${id}`, data, {
+      headers: {}
+    });
+  },
   deleteGalleryItem: (id) => apiClient.delete(`/api/gallery/${id}`),
+  
+  // Budgets
+  getBudgets: () => apiClient.get('/api/budgets'),
+  uploadBudget: (data) => {
+    return apiClient.post('/api/budgets', data, {
+      headers: {}
+    });
+  },
+  deleteBudget: (id) => apiClient.delete(`/api/budgets/${id}`),
   
   // Contacts
   getContacts: () => apiClient.get('/api/contacts'),
@@ -149,10 +176,33 @@ deleteBudget: (id) => apiClient.delete(`/api/budgets/${id}`),
   
   // Service Applications
   getApplications: () => apiClient.get('/api/service-applications'),
+  
+  // ✅ UPDATED: Submit application with optional file upload
   submitApplication: (data) => {
     console.log('📤 Submitting application data:', data);
     return apiClient.post('/api/service-applications', data);
   },
+  
+  // ✅ NEW: Submit application with file upload (for traditional ruler authorization)
+  submitApplicationWithFile: (formData) => {
+    console.log('📤 Submitting application with file...');
+    return apiClient.post('/api/service-applications/apply-with-file', formData, {
+      headers: {} // Let axios set the correct Content-Type with boundary
+    });
+  },
+  
+  // ✅ NEW: Get service prices
+  getServicePrices: () => {
+    console.log('📤 Fetching service prices...');
+    return apiClient.get('/api/service-applications/prices');
+  },
+  
+  // ✅ NEW: Update service price (Admin only)
+  updateServicePrice: (serviceType, data) => {
+    console.log(`📤 Updating price for ${serviceType}:`, data);
+    return apiClient.put(`/api/service-applications/prices/${encodeURIComponent(serviceType)}`, data);
+  },
+  
   updateApplicationStatus: (id, status) => 
     apiClient.put(`/api/service-applications/${id}/status`, { status }),
   deleteApplication: (id) => apiClient.delete(`/api/service-applications/${id}`),
@@ -168,57 +218,15 @@ deleteBudget: (id) => apiClient.delete(`/api/budgets/${id}`),
   markNotificationRead: (id) => apiClient.put(`/api/notifications/${id}/read`),
   markAllNotificationsRead: () => apiClient.put('/api/notifications/read-all'),
 
-// Forum - Add these
-getTopics: () => apiClient.get('/api/forum/topics'),
-getTopic: (id) => apiClient.get(`/api/forum/topics/${id}`),
-createTopic: (data) => apiClient.post('/api/forum/topics', data),
-getReplies: (topicId) => apiClient.get(`/api/forum/topics/${topicId}/replies`),
-addReply: (topicId, data) => apiClient.post(`/api/forum/topics/${topicId}/replies`, data),
-likeTopic: (topicId) => apiClient.post(`/api/forum/topics/${topicId}/like`),
-getLikeStatus: (topicId) => apiClient.get(`/api/forum/topics/${topicId}/like-status`),
-getLikeCount: (topicId) => apiClient.get(`/api/forum/topics/${topicId}/likes`),
-
-  // NGOs
-getNGOs: () => apiClient.get('/api/ngos-foundations'),
-addNGO: (data) => {
-  return apiClient.post('/api/ngos-foundations', data, {
-    headers: {}
-  });
-},
-updateNGO: (id, data) => {
-  return apiClient.put(`/api/ngos-foundations/${id}`, data, {
-    headers: {}
-  });
-},
-deleteNGO: (id) => apiClient.delete(`/api/ngos-foundations/${id}`),
-
-// Academia
-getAcademia: () => apiClient.get('/api/academia'),
-addAcademician: (data) => {
-  return apiClient.post('/api/academia', data, {
-    headers: {}
-  });
-},
-updateAcademician: (id, data) => {
-  return apiClient.put(`/api/academia/${id}`, data, {
-    headers: {}
-  });
-},
-deleteAcademician: (id) => apiClient.delete(`/api/academia/${id}`),
-
-// Gallery
-getGallery: () => apiClient.get('/api/gallery'),
-addGalleryItem: (data) => {
-  return apiClient.post('/api/gallery', data, {
-    headers: {}
-  });
-},
-updateGalleryItem: (id, data) => {
-  return apiClient.put(`/api/gallery/${id}`, data, {
-    headers: {}
-  });
-},
-deleteGalleryItem: (id) => apiClient.delete(`/api/gallery/${id}`),
+  // Forum
+  getTopics: () => apiClient.get('/api/forum/topics'),
+  getTopic: (id) => apiClient.get(`/api/forum/topics/${id}`),
+  createTopic: (data) => apiClient.post('/api/forum/topics', data),
+  getReplies: (topicId) => apiClient.get(`/api/forum/topics/${topicId}/replies`),
+  addReply: (topicId, data) => apiClient.post(`/api/forum/topics/${topicId}/replies`, data),
+  likeTopic: (topicId) => apiClient.post(`/api/forum/topics/${topicId}/like`),
+  getLikeStatus: (topicId) => apiClient.get(`/api/forum/topics/${topicId}/like-status`),
+  getLikeCount: (topicId) => apiClient.get(`/api/forum/topics/${topicId}/likes`),
 };
 
 export default apiClient;
