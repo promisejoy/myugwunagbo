@@ -3,8 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import { 
   FaPaperPlane, FaUser, FaSmile, FaTimes, FaReply, FaTrash, 
-  FaImage, FaVideo, FaFile, FaTimesCircle, FaSpinner, FaUsers,
-  FaComments, FaCheckCircle
+  FaImage, FaFile, FaTimesCircle, FaSpinner, FaUsers,
+  FaComments
 } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 
@@ -74,19 +74,41 @@ const FilePreview = memo(({ file, onRemove }) => {
 // ---------- Chat Message Component ----------
 const ChatMessage = memo(({ message, onReply, onReact, onDelete, isOwn }) => {
   const formatTime = (dateString) => {
+    if (!dateString) return '';
     const date = new Date(dateString);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const isImage = message.file_type?.startsWith('image/');
-  const isVideo = message.file_type?.startsWith('video/');
+  // Get message ID safely
+  const messageId = message?._id || message?.id;
+  
+  const isImage = message?.file_type?.startsWith('image/');
+  const isVideo = message?.file_type?.startsWith('video/');
+
+  const handleReact = (emoji) => {
+    if (messageId) {
+      onReact(messageId, emoji);
+    }
+  };
+
+  const handleDelete = () => {
+    if (messageId) {
+      onDelete(messageId);
+    }
+  };
+
+  const handleReply = () => {
+    if (message) {
+      onReply(message);
+    }
+  };
 
   return (
     <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-3`}>
       <div className={`max-w-[75%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
         {!isOwn && (
           <span className="text-xs font-medium text-gray-600 mb-1">
-            {message.user?.username || 'Anonymous'}
+            {message?.user?.username || 'Anonymous'}
           </span>
         )}
         <div
@@ -94,7 +116,7 @@ const ChatMessage = memo(({ message, onReply, onReact, onDelete, isOwn }) => {
             isOwn ? 'bg-[#006400] text-white' : 'bg-gray-100 text-gray-800'
           }`}
         >
-          {message.replyTo && (
+          {message?.replyTo && (
             <div className="text-xs opacity-70 mb-1 bg-white/10 rounded p-1.5">
               <span className="font-medium">@{message.replyTo.user?.username}</span>
               <span className="ml-1">{message.replyTo.content?.substring(0, 50)}...</span>
@@ -102,7 +124,7 @@ const ChatMessage = memo(({ message, onReply, onReact, onDelete, isOwn }) => {
           )}
           
           {/* File/Media Display */}
-          {message.file_url && isImage && (
+          {message?.file_url && isImage && (
             <img 
               src={message.file_url} 
               alt={message.file_name || 'Image'} 
@@ -110,14 +132,14 @@ const ChatMessage = memo(({ message, onReply, onReact, onDelete, isOwn }) => {
               loading="lazy"
             />
           )}
-          {message.file_url && isVideo && (
+          {message?.file_url && isVideo && (
             <video 
               src={message.file_url} 
               controls 
               className="max-w-full max-h-48 rounded-lg mb-2"
             />
           )}
-          {message.file_url && !isImage && !isVideo && (
+          {message?.file_url && !isImage && !isVideo && (
             <a 
               href={message.file_url} 
               target="_blank" 
@@ -128,13 +150,13 @@ const ChatMessage = memo(({ message, onReply, onReact, onDelete, isOwn }) => {
             </a>
           )}
           
-          <p className="text-sm break-words">{message.content}</p>
+          <p className="text-sm break-words">{message?.content}</p>
           <div className="flex items-center gap-1 mt-1">
-            <span className="text-[10px] opacity-70">{formatTime(message.created_at)}</span>
+            <span className="text-[10px] opacity-70">{formatTime(message?.created_at)}</span>
           </div>
           
           {/* Reactions */}
-          {message.reactions && message.reactions.length > 0 && (
+          {message?.reactions && message.reactions.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
               {Object.entries(
                 message.reactions.reduce((acc, r) => {
@@ -153,26 +175,26 @@ const ChatMessage = memo(({ message, onReply, onReact, onDelete, isOwn }) => {
         {/* Actions */}
         <div className="flex items-center gap-1 mt-1">
           <button
-            onClick={() => onReply(message)}
+            onClick={handleReply}
             className="text-xs text-gray-400 hover:text-[#006400] transition-colors"
           >
             <FaReply className="inline mr-0.5" size={10} /> Reply
           </button>
           <button
-            onClick={() => onReact(message._id, '❤️')}
+            onClick={() => handleReact('❤️')}
             className="text-xs text-gray-400 hover:text-red-500 transition-colors"
           >
             ❤️
           </button>
           <button
-            onClick={() => onReact(message._id, '👍')}
+            onClick={() => handleReact('👍')}
             className="text-xs text-gray-400 hover:text-blue-500 transition-colors"
           >
             👍
           </button>
           {isOwn && (
             <button
-              onClick={() => onDelete(message._id)}
+              onClick={handleDelete}
               className="text-xs text-gray-400 hover:text-red-500 transition-colors"
             >
               <FaTrash size={10} />
@@ -196,54 +218,82 @@ const ChatRoom = () => {
   const [showUsers, setShowUsers] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
   
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const fileInputRef = useRef(null);
+  const isMountedRef = useRef(true);
+  const loadIntervalRef = useRef(null);
 
-  // Load messages
+  // Load messages - only when component mounts
   const loadMessages = useCallback(async () => {
+    if (!isMountedRef.current) return;
     try {
       const response = await api.getChatMessages();
-      const newMessages = response.data || [];
-      setMessages(newMessages);
-      setTimeout(() => scrollToBottom(), 50);
+      if (isMountedRef.current) {
+        setMessages(response.data || []);
+        setLoading(false);
+      }
     } catch (error) {
       console.error('Error loading messages:', error);
-    } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   const loadUsers = useCallback(async () => {
     try {
       const response = await api.getOnlineUsers();
-      setUsers(response.data || []);
+      if (isMountedRef.current) {
+        setUsers(response.data || []);
+      }
     } catch (error) {
       console.error('Error loading users:', error);
     }
   }, []);
 
+  // Initial load
   useEffect(() => {
+    isMountedRef.current = true;
+    
     if (isAuthenticated) {
       loadMessages();
       loadUsers();
-      const interval = setInterval(loadMessages, 5000);
-      return () => clearInterval(interval);
     }
+
+    // Polling every 5 seconds - but only if component is mounted
+    loadIntervalRef.current = setInterval(() => {
+      if (isMountedRef.current && isAuthenticated) {
+        loadMessages();
+      }
+    }, 5000);
+
+    return () => {
+      isMountedRef.current = false;
+      if (loadIntervalRef.current) {
+        clearInterval(loadIntervalRef.current);
+      }
+    };
   }, [isAuthenticated, loadMessages, loadUsers]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  };
+  // Scroll to bottom only when messages change
+  useEffect(() => {
+    if (!loading && messages.length > 0) {
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+      }, 100);
+    }
+  }, [messages.length, loading]);
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
       toast.error('File too large. Maximum 10MB allowed.');
       return;
@@ -262,7 +312,6 @@ const ChatRoom = () => {
     if ((!newMessage.trim() && !selectedFile) || isSending) return;
 
     setIsSending(true);
-    setUploading(!!selectedFile);
 
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage = {
@@ -281,7 +330,12 @@ const ChatRoom = () => {
     setMessages(prev => [...prev, optimisticMessage]);
     setNewMessage('');
     setReplyTo(null);
-    setTimeout(() => scrollToBottom(), 50);
+    
+    setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
+    }, 50);
 
     try {
       const formData = new FormData();
@@ -304,13 +358,19 @@ const ChatRoom = () => {
       toast.error('Failed to send message');
     } finally {
       setIsSending(false);
-      setUploading(false);
     }
   };
 
+  // ✅ FIXED: handleReaction with proper ID
   const handleReaction = async (messageId, emoji) => {
+    if (!messageId) {
+      console.error('Cannot react: messageId is undefined');
+      return;
+    }
+    
     try {
       await api.reactToMessage(messageId, { emoji });
+      // Refresh messages to show updated reactions
       await loadMessages();
     } catch (error) {
       console.error('Error reacting:', error);
@@ -318,7 +378,13 @@ const ChatRoom = () => {
     }
   };
 
+  // ✅ FIXED: handleDelete with proper ID
   const handleDeleteMessage = async (messageId) => {
+    if (!messageId) {
+      console.error('Cannot delete: messageId is undefined');
+      return;
+    }
+    
     if (!window.confirm('Delete this message?')) return;
     try {
       await api.deleteChatMessage(messageId);
@@ -331,7 +397,13 @@ const ChatRoom = () => {
   };
 
   const isOwnMessage = (message) => {
+    if (!message) return false;
     return message.userId === user?.id || message.user?.id === user?.id || message.isOptimistic;
+  };
+
+  // Get message ID safely
+  const getMessageId = (message) => {
+    return message?._id || message?.id;
   };
 
   return (
@@ -391,7 +463,7 @@ const ChatRoom = () => {
             ) : (
               messages.map((message) => (
                 <ChatMessage
-                  key={message._id || message.id}
+                  key={getMessageId(message) || `msg-${Date.now()}`}
                   message={message}
                   onReply={setReplyTo}
                   onReact={handleReaction}
