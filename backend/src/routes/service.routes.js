@@ -3,10 +3,10 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { supabase } = require('../config/supabase');
+const supabase = require('../config/supabase');
 
 // ============================================
-// MULTER CONFIGURATION FOR FILE UPLOADS
+// MULTER CONFIGURATION
 // ============================================
 
 // Ensure uploads directory exists
@@ -36,7 +36,7 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({ 
   storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: fileFilter
 });
 
@@ -77,14 +77,10 @@ router.post('/', async (req, res) => {
 
     console.log('📝 Received application data:', req.body);
 
-    // Validate required fields
     if (!name || !email || !service_type) {
-      return res.status(400).json({ 
-        error: 'Name, email, and service type are required' 
-      });
+      return res.status(400).json({ error: 'Name, email, and service type are required' });
     }
 
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ error: 'Invalid email format' });
@@ -95,7 +91,6 @@ router.post('/', async (req, res) => {
     const random = Math.random().toString(36).substr(2, 5);
     const applicationId = `UGW-${timestamp}-${random}`.toUpperCase();
 
-    // Prepare data
     const now = new Date().toISOString();
     const applicationData = {
       name: name.trim(),
@@ -109,9 +104,6 @@ router.post('/', async (req, res) => {
       updated_at: now
     };
 
-    console.log('📦 Inserting application data:', applicationData);
-
-    // Insert into Supabase
     const { data, error } = await supabase
       .from('service_applications')
       .insert([applicationData])
@@ -119,37 +111,7 @@ router.post('/', async (req, res) => {
 
     if (error) {
       console.error('❌ Supabase insert error:', error);
-      
-      // If error is about application_id, try without it
-      if (error.message && error.message.includes('application_id')) {
-        console.log('⚠️ application_id column issue, trying without...');
-        delete applicationData.application_id;
-        
-        const { data: retryData, error: retryError } = await supabase
-          .from('service_applications')
-          .insert([applicationData])
-          .select();
-        
-        if (retryError) {
-          console.error('❌ Retry error:', retryError);
-          return res.status(500).json({ 
-            error: 'Database error: ' + retryError.message
-          });
-        }
-        
-        const savedData = retryData[0];
-        return res.status(201).json({ 
-          ...savedData, 
-          _id: savedData.id, 
-          createdAt: savedData.created_at,
-          application_id: applicationId
-        });
-      }
-      
-      return res.status(500).json({ 
-        error: 'Database error: ' + error.message,
-        details: error.details || ''
-      });
+      return res.status(500).json({ error: 'Database error: ' + error.message });
     }
     
     const savedData = data[0];
@@ -170,28 +132,37 @@ router.post('/', async (req, res) => {
 });
 
 // ============================================
-// SUBMIT APPLICATION WITH FILE (FOR LGA AUTHORIZATION)
+// SUBMIT APPLICATION WITH FILE
 // ============================================
 router.post('/apply-with-file', upload.single('authorization_file'), async (req, res) => {
   try {
+    console.log('📝 Received application with file request');
+    console.log('📦 Body:', req.body);
+    console.log('📎 File:', req.file ? req.file.originalname : 'No file');
+
     const { 
       name, email, phone, service_type, description,
       traditional_ruler_name, traditional_ruler_title
     } = req.body;
     
-    console.log('📝 Received application with file:', { name, email, service_type, traditional_ruler_name });
-
     // Validate required fields
     if (!name || !email || !service_type) {
+      // Clean up uploaded file if error
+      if (req.file && req.file.path) {
+        fs.unlink(req.file.path, () => {});
+      }
       return res.status(400).json({ 
         success: false,
         error: 'Name, email, and service type are required' 
       });
     }
 
-    // Validate email format
+    // Validate email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
+      if (req.file && req.file.path) {
+        fs.unlink(req.file.path, () => {});
+      }
       return res.status(400).json({ 
         success: false,
         error: 'Invalid email format' 
@@ -201,12 +172,18 @@ router.post('/apply-with-file', upload.single('authorization_file'), async (req,
     // If Local Government of Origin, validate traditional ruler fields
     if (service_type === 'Local Government of Origin') {
       if (!traditional_ruler_name) {
+        if (req.file && req.file.path) {
+          fs.unlink(req.file.path, () => {});
+        }
         return res.status(400).json({ 
           success: false,
           error: 'Traditional Ruler name is required for LGA applications' 
         });
       }
       if (!traditional_ruler_title) {
+        if (req.file && req.file.path) {
+          fs.unlink(req.file.path, () => {});
+        }
         return res.status(400).json({ 
           success: false,
           error: 'Traditional Ruler title is required for LGA applications' 
@@ -231,28 +208,31 @@ router.post('/apply-with-file', upload.single('authorization_file'), async (req,
     // Upload file to Supabase Storage if provided
     if (req.file) {
       try {
-        const filePath = `authorizations/${Date.now()}_${req.file.originalname}`;
-        
-        // Read file buffer
-        const fileBuffer = fs.readFileSync(req.file.path);
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('service-documents')
-          .upload(filePath, fileBuffer, {
-            contentType: req.file.mimetype,
-            upsert: true
-          });
-        
-        if (uploadError) {
-          console.error('❌ Supabase upload error:', uploadError);
-          // Continue without file - we'll still save the application
+        // Check if supabase storage is available
+        if (!supabase.storage) {
+          console.error('❌ Supabase storage is not available');
         } else {
-          const { data: urlData } = supabase.storage
-            .from('service-documents')
-            .getPublicUrl(filePath);
+          const filePath = `authorizations/${Date.now()}_${req.file.originalname}`;
+          const fileBuffer = fs.readFileSync(req.file.path);
           
-          authorization_file_url = urlData.publicUrl;
-          authorization_file_name = req.file.originalname;
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('service-documents')
+            .upload(filePath, fileBuffer, {
+              contentType: req.file.mimetype,
+              upsert: true
+            });
+          
+          if (uploadError) {
+            console.error('❌ Supabase upload error:', uploadError);
+            // Continue without file - we'll still save the application
+          } else {
+            const { data: urlData } = supabase.storage
+              .from('service-documents')
+              .getPublicUrl(filePath);
+            
+            authorization_file_url = urlData.publicUrl;
+            authorization_file_name = req.file.originalname;
+          }
           
           // Clean up local file
           fs.unlink(req.file.path, (err) => {
@@ -261,7 +241,10 @@ router.post('/apply-with-file', upload.single('authorization_file'), async (req,
         }
       } catch (uploadError) {
         console.error('❌ File upload error:', uploadError);
-        // Continue without file - we'll still save the application
+        // Clean up local file
+        if (req.file && req.file.path) {
+          fs.unlink(req.file.path, () => {});
+        }
       }
     }
     
@@ -275,79 +258,92 @@ router.post('/apply-with-file', upload.single('authorization_file'), async (req,
       description: description ? description.trim() : '',
       application_id: applicationId,
       status: 'pending',
-      traditional_ruler_name: traditional_ruler_name ? traditional_ruler_name.trim() : null,
-      traditional_ruler_title: traditional_ruler_title ? traditional_ruler_title.trim() : null,
-      authorization_file_url: authorization_file_url,
-      authorization_file_name: authorization_file_name,
       created_at: now,
       updated_at: now
     };
 
-    console.log('📦 Inserting application with file data:', applicationData);
+    // Only add these fields if they exist in the table
+    // Check if columns exist by trying to insert with them
+    try {
+      // Try with all fields
+      const fullData = {
+        ...applicationData,
+        traditional_ruler_name: traditional_ruler_name ? traditional_ruler_name.trim() : null,
+        traditional_ruler_title: traditional_ruler_title ? traditional_ruler_title.trim() : null,
+        authorization_file_url: authorization_file_url,
+        authorization_file_name: authorization_file_name
+      };
 
-    // Insert into database
-    const { data, error } = await supabase
-      .from('service_applications')
-      .insert([applicationData])
-      .select()
-      .single();
-    
-    if (error) {
-      console.error('❌ Database insert error:', error);
+      const { data, error } = await supabase
+        .from('service_applications')
+        .insert([fullData])
+        .select()
+        .single();
       
-      // If columns don't exist yet, try without the new fields
-      if (error.message && error.message.includes('traditional_ruler_name')) {
-        console.log('⚠️ New columns not found, trying without...');
-        delete applicationData.traditional_ruler_name;
-        delete applicationData.traditional_ruler_title;
-        delete applicationData.authorization_file_url;
-        delete applicationData.authorization_file_name;
-        
-        const { data: retryData, error: retryError } = await supabase
+      if (error) {
+        // If columns don't exist, try without them
+        if (error.message && (error.message.includes('traditional_ruler_name') || error.message.includes('authorization_file_url'))) {
+          console.log('⚠️ New columns not found, using basic data...');
+          
+          const { data: retryData, error: retryError } = await supabase
+            .from('service_applications')
+            .insert([applicationData])
+            .select()
+            .single();
+          
+          if (retryError) {
+            throw retryError;
+          }
+          
+          console.log('✅ Application saved successfully (without custom fields)');
+          return res.status(201).json({
+            success: true,
+            message: 'Application submitted successfully',
+            data: retryData,
+            application_id: applicationId
+          });
+        }
+        throw error;
+      }
+      
+      console.log('✅ Application with file saved successfully');
+      res.status(201).json({
+        success: true,
+        message: 'Application submitted successfully',
+        data: data,
+        application_id: applicationId
+      });
+      
+    } catch (dbError) {
+      console.error('❌ Database error:', dbError);
+      
+      // Last resort - try without any custom fields
+      try {
+        const { data: fallbackData, error: fallbackError } = await supabase
           .from('service_applications')
           .insert([applicationData])
           .select()
           .single();
         
-        if (retryError) {
-          console.error('❌ Retry error:', retryError);
-          return res.status(500).json({ 
-            success: false,
-            error: 'Database error: ' + retryError.message
-          });
-        }
+        if (fallbackError) throw fallbackError;
         
-        return res.status(201).json({
+        res.status(201).json({
           success: true,
-          message: 'Application submitted successfully (without authorization fields)',
-          data: retryData,
+          message: 'Application submitted successfully (basic)',
+          data: fallbackData,
           application_id: applicationId
         });
+      } catch (fallbackError) {
+        throw fallbackError;
       }
-      
-      return res.status(500).json({ 
-        success: false,
-        error: 'Database error: ' + error.message
-      });
     }
-    
-    console.log('✅ Application with file saved successfully:', data);
-    
-    res.status(201).json({
-      success: true,
-      message: 'Application submitted successfully',
-      data: data,
-      application_id: applicationId
-    });
     
   } catch (error) {
     console.error('❌ Error submitting application with file:', error);
     
     // Clean up uploaded file if error occurs
     if (req.file && req.file.path) {
-      fs.unlink(req.file.path, (err) => {
-        if (err) console.error('Error deleting temp file:', err);
-      });
+      fs.unlink(req.file.path, () => {});
     }
     
     res.status(500).json({ 
@@ -362,14 +358,29 @@ router.post('/apply-with-file', upload.single('authorization_file'), async (req,
 // ============================================
 router.get('/prices', async (req, res) => {
   try {
+    // Try to get prices from service_prices table
     const { data, error } = await supabase
       .from('service_prices')
       .select('*');
     
     if (error) {
       console.error('Error fetching service prices:', error);
-      // Return empty object if table doesn't exist yet
-      return res.json({ success: true, data: {} });
+      // Return default prices if table doesn't exist
+      return res.json({ 
+        success: true, 
+        data: {
+          'Birth Certificate': { amount: 5000, currency: 'NGN', description: 'Birth certificate processing' },
+          'Marriage Certificate': { amount: 10000, currency: 'NGN', description: 'Marriage certificate processing' },
+          'Local Government of Origin': { amount: 5000, currency: 'NGN', description: 'LGA origin certificate' },
+          'Business Permit': { amount: 15000, currency: 'NGN', description: 'Business permit processing' },
+          'Building Plan Approval': { amount: 20000, currency: 'NGN', description: 'Building plan approval' },
+          'Tax Clearance Certificate': { amount: 5000, currency: 'NGN', description: 'Tax clearance certificate' },
+          'Market Stall Permit': { amount: 8000, currency: 'NGN', description: 'Market stall permit' },
+          'Social Welfare': { amount: 3000, currency: 'NGN', description: 'Social welfare application' },
+          'Village Directory': { amount: 2000, currency: 'NGN', description: 'Village directory listing' },
+          'Other': { amount: 5000, currency: 'NGN', description: 'Other services' }
+        }
+      });
     }
     
     const prices = {};
@@ -393,14 +404,13 @@ router.get('/prices', async (req, res) => {
 });
 
 // ============================================
-// UPDATE SERVICE PRICE (ADMIN ONLY)
+// UPDATE SERVICE PRICE
 // ============================================
 router.put('/prices/:serviceType', async (req, res) => {
   try {
     const { serviceType } = req.params;
     const { amount, currency, description } = req.body;
     
-    // Validate amount
     if (amount === undefined || amount === null || amount < 0) {
       return res.status(400).json({ 
         success: false,
@@ -408,7 +418,6 @@ router.put('/prices/:serviceType', async (req, res) => {
       });
     }
     
-    // Validate amount is a number
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount)) {
       return res.status(400).json({ 
