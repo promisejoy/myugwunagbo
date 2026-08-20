@@ -38,6 +38,22 @@ const ApplyForService = () => {
     'Other'
   ];
 
+  // Default prices as fallback
+  const getDefaultPrices = () => {
+    return {
+      'Birth Certificate': { amount: 5000, currency: 'NGN', description: 'Birth certificate processing' },
+      'Marriage Certificate': { amount: 10000, currency: 'NGN', description: 'Marriage certificate processing' },
+      'Local Government of Origin': { amount: 3000, currency: 'NGN', description: 'LGA origin certificate' },
+      'Business Permit': { amount: 15000, currency: 'NGN', description: 'Business permit processing' },
+      'Building Plan Approval': { amount: 20000, currency: 'NGN', description: 'Building plan approval' },
+      'Tax Clearance Certificate': { amount: 5000, currency: 'NGN', description: 'Tax clearance certificate' },
+      'Market Stall Permit': { amount: 8000, currency: 'NGN', description: 'Market stall permit' },
+      'Social Welfare': { amount: 3000, currency: 'NGN', description: 'Social welfare application' },
+      'Village Directory': { amount: 2000, currency: 'NGN', description: 'Village directory listing' },
+      'Other': { amount: 5000, currency: 'NGN', description: 'Other services' }
+    };
+  };
+
   // Fetch service prices from backend
   useEffect(() => {
     const fetchPrices = async () => {
@@ -46,32 +62,29 @@ const ApplyForService = () => {
         const response = await api.getServicePrices();
         console.log('✅ Service prices response:', response.data);
         
+        // Check if we got valid data
         if (response.data && response.data.data) {
           setServicePrices(response.data.data);
-          console.log('📊 Prices set:', response.data.data);
-        } else if (response.data) {
+          console.log('📊 Prices set from response.data.data:', response.data.data);
+        } else if (response.data && typeof response.data === 'object' && !response.data.error) {
+          // If the data is directly the prices object
           setServicePrices(response.data);
-          console.log('📊 Prices set (direct):', response.data);
+          console.log('📊 Prices set from response.data:', response.data);
+        } else {
+          // If no valid data, use defaults
+          console.warn('⚠️ No valid price data received, using defaults');
+          setServicePrices(getDefaultPrices());
         }
         setPricesLoaded(true);
       } catch (error) {
         console.error('❌ Error fetching service prices:', error);
-        // Set default prices if API fails
-        const defaultPrices = {
-          'Birth Certificate': { amount: 5000, currency: 'NGN', description: 'Birth certificate processing' },
-          'Marriage Certificate': { amount: 10000, currency: 'NGN', description: 'Marriage certificate processing' },
-          'Local Government of Origin': { amount: 3000, currency: 'NGN', description: 'LGA origin certificate' },
-          'Business Permit': { amount: 15000, currency: 'NGN', description: 'Business permit processing' },
-          'Building Plan Approval': { amount: 20000, currency: 'NGN', description: 'Building plan approval' },
-          'Tax Clearance Certificate': { amount: 5000, currency: 'NGN', description: 'Tax clearance certificate' },
-          'Market Stall Permit': { amount: 8000, currency: 'NGN', description: 'Market stall permit' },
-          'Social Welfare': { amount: 3000, currency: 'NGN', description: 'Social welfare application' },
-          'Village Directory': { amount: 2000, currency: 'NGN', description: 'Village directory listing' },
-          'Other': { amount: 5000, currency: 'NGN', description: 'Other services' }
-        };
-        setServicePrices(defaultPrices);
+        // Only show toast for network errors
+        if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
+          toast.error('Could not load prices. Please check your connection.');
+        }
+        // Always set default prices as fallback
+        setServicePrices(getDefaultPrices());
         setPricesLoaded(true);
-        toast.error('Could not load prices. Using default values.');
       }
     };
     fetchPrices();
@@ -216,9 +229,6 @@ const ApplyForService = () => {
   const getServicePrice = (serviceType) => {
     if (!serviceType) return 0;
     
-    console.log('🔍 Getting price for:', serviceType);
-    console.log('📊 Available prices:', servicePrices);
-    
     // Try to get price from servicePrices object
     let price = 0;
     
@@ -241,7 +251,6 @@ const ApplyForService = () => {
       price = defaultPrices[serviceType] || 0;
     }
     
-    console.log('💰 Price for', serviceType, ':', price);
     return price;
   };
 

@@ -211,6 +211,7 @@ router.post('/apply-with-file', upload.single('authorization_file'), async (req,
 // ============================================
 // GET SERVICE PRICES
 // ============================================
+// GET /api/service-applications/prices
 router.get('/prices', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -237,7 +238,6 @@ router.get('/prices', async (req, res) => {
     res.status(500).json({ error: error.message || 'Failed to fetch service prices' });
   }
 });
-
 // ============================================
 // UPDATE SERVICE PRICE
 // ============================================
