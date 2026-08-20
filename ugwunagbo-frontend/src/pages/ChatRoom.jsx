@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import { FaPaperPlane, FaUser, FaSmile, FaTimes, FaReply, FaTrash } from 'react-icons/fa';
@@ -35,10 +35,13 @@ const ChatRoom = () => {
   const [replyTo, setReplyTo] = useState(null);
   const [showUsers, setShowUsers] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [hasNewMessages, setHasNewMessages] = useState(false);
+  
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const messagesContainerRef = useRef(null);
-  const [shouldScroll, setShouldScroll] = useState(true);
+  const isUserScrollingRef = useRef(false);
+  const lastMessageCountRef = useRef(0);
 
   // Load messages and users
   useEffect(() => {
@@ -46,27 +49,34 @@ const ChatRoom = () => {
       loadMessages();
       loadUsers();
       
-      // ✅ FASTER: Poll every 2 seconds instead of 3
+      // ✅ Poll less aggressively - every 3 seconds is fine
       const interval = setInterval(() => {
         loadMessages();
-      }, 2000);
+      }, 3000);
       
       return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
 
-  // Load messages
-  const loadMessages = async () => {
+  // Load messages - optimized with useCallback
+  const loadMessages = useCallback(async () => {
     try {
       const response = await api.getChatMessages();
       const newMessages = response.data || [];
       
-      // Only update if there are new messages
-      if (newMessages.length !== messages.length) {
+      // Check if there are actually new messages
+      if (newMessages.length !== lastMessageCountRef.current) {
+        lastMessageCountRef.current = newMessages.length;
         setMessages(newMessages);
-        // Only scroll if user is near the bottom
-        if (shouldScroll) {
-          scrollToBottom();
+        
+        // Only auto-scroll if user hasn't scrolled up
+        if (!isUserScrollingRef.current) {
+          setTimeout(() => {
+            scrollToBottom();
+          }, 50);
+        } else {
+          // Show indicator that new messages are available
+          setHasNewMessages(true);
         }
       }
     } catch (error) {
@@ -74,7 +84,7 @@ const ChatRoom = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const loadUsers = async () => {
     try {
@@ -86,63 +96,88 @@ const ChatRoom = () => {
   };
 
   const scrollToBottom = () => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
   };
 
-  // ✅ FIX: Track user scroll to prevent auto-scroll
+  // ✅ Handle user scroll - mark when user is scrolling up
   const handleScroll = () => {
     const container = messagesContainerRef.current;
     if (!container) return;
     
     const { scrollTop, scrollHeight, clientHeight } = container;
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-    setShouldScroll(isNearBottom);
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 50;
+    
+    // If user scrolls up, stop auto-scrolling
+    isUserScrollingRef.current = !isNearBottom;
+    
+    // If user scrolls back to bottom, enable auto-scroll
+    if (isNearBottom) {
+      isUserScrollingRef.current = false;
+      setHasNewMessages(false);
+    }
   };
 
+  // ✅ Send message - fast and optimistic
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() || isSending) return;
 
     setIsSending(true);
+    
+    // Create optimistic message
+    const optimisticMessage = {
+      _id: `temp-${Date.now()}`,
+      content: newMessage.trim(),
+      user_id: user?.id,
+      user: { username: user?.username || 'You', full_name: user?.fullName || '' },
+      created_at: new Date().toISOString(),
+      replyTo: replyTo,
+      isOptimistic: true
+    };
+
+    // Add optimistically
+    setMessages(prev => [...prev, optimisticMessage]);
+    setNewMessage('');
+    setReplyTo(null);
+    
+    // ✅ Immediately scroll to bottom for new message
+    setTimeout(() => {
+      scrollToBottom();
+    }, 50);
+
     try {
       const messageData = {
-        content: newMessage.trim(),
+        content: optimisticMessage.content,
         replyTo: replyTo?._id || null
       };
       
       const response = await api.sendChatMessage(messageData);
       
-      // Add the new message optimistically
-      setMessages(prev => [...prev, response.data]);
-      setNewMessage('');
-      setReplyTo(null);
-      setShouldScroll(true);
+      // Replace optimistic message with real one
+      setMessages(prev => 
+        prev.map(msg => 
+          msg._id === optimisticMessage._id ? response.data : msg
+        )
+      );
       
-      // Scroll after sending
-      setTimeout(() => {
-        scrollToBottom();
-      }, 100);
-      
-      // Immediately load to sync with server
-      setTimeout(() => {
-        loadMessages();
-      }, 500);
+      lastMessageCountRef.current += 1;
+      inputRef.current?.focus();
     } catch (error) {
       console.error('Error sending message:', error);
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(msg => msg._id !== optimisticMessage._id));
       toast.error('Failed to send message');
     } finally {
       setIsSending(false);
-      // Focus back on input
-      inputRef.current?.focus();
     }
   };
 
   const handleReaction = async (messageId, emoji) => {
     try {
       await api.reactToMessage(messageId, { emoji });
-      // Refresh messages to show updated reactions
+      // Refresh messages to show updated reactions - but preserve scroll position
       await loadMessages();
     } catch (error) {
       console.error('Error reacting to message:', error);
@@ -184,8 +219,15 @@ const ChatRoom = () => {
   };
 
   const isOwnMessage = (message) => {
-    return message.userId === user?.id || message.user?.id === user?.id;
+    return message.userId === user?.id || message.user?.id === user?.id || message.isOptimistic;
   };
+
+  // Scroll to bottom on initial load
+  useEffect(() => {
+    if (!loading && messages.length > 0) {
+      scrollToBottom();
+    }
+  }, [loading]);
 
   return (
     <div className="bg-white rounded-2xl shadow-xl overflow-hidden h-[600px] flex flex-col">
@@ -242,8 +284,8 @@ const ChatRoom = () => {
             ) : (
               messages.map((message) => (
                 <div
-                  key={message._id || message.id}
-                  className={`flex ${isOwnMessage(message) ? 'justify-end' : 'justify-start'}`}
+                  key={message._id || message.id || `msg-${Date.now()}`}
+                  className={`flex ${isOwnMessage(message) ? 'justify-end' : 'justify-start'} ${message.isOptimistic ? 'opacity-70' : ''}`}
                 >
                   <div className={`max-w-[70%] ${isOwnMessage(message) ? 'items-end' : 'items-start'} flex flex-col`}>
                     {!isOwnMessage(message) && (
@@ -266,52 +308,73 @@ const ChatRoom = () => {
                       )}
                       <p className="text-sm break-words">{message.content}</p>
                       <div className="flex items-center gap-1 mt-1">
-                        <span className="text-[10px] opacity-70">{formatTime(message.created_at)}</span>
+                        <span className="text-[10px] opacity-70">
+                          {message.isOptimistic ? 'Sending...' : formatTime(message.created_at)}
+                        </span>
+                        {message.isOptimistic && (
+                          <span className="text-[10px] text-yellow-300">⏳</span>
+                        )}
                       </div>
                     </div>
                     
                     {/* Reactions */}
-                    {message.reactions && message.reactions.length > 0 && (
+                    {message.reactions && message.reactions.length > 0 && !message.isOptimistic && (
                       <div className="flex flex-wrap gap-1 mt-1">
                         {getReactionEmojis(message.reactions)}
                       </div>
                     )}
 
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-2 mt-1">
-                      <button
-                        onClick={() => setReplyTo(message)}
-                        className="text-xs text-gray-400 hover:text-[#006400] transition-colors"
-                      >
-                        Reply
-                      </button>
-                      <button
-                        onClick={() => handleReaction(message._id, '❤️')}
-                        className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-                      >
-                        ❤️
-                      </button>
-                      <button
-                        onClick={() => handleReaction(message._id, '👍')}
-                        className="text-xs text-gray-400 hover:text-blue-500 transition-colors"
-                      >
-                        👍
-                      </button>
-                      {isOwnMessage(message) && (
+                    {/* Action Buttons - only for real messages */}
+                    {!message.isOptimistic && (
+                      <div className="flex items-center gap-2 mt-1">
                         <button
-                          onClick={() => handleDeleteMessage(message._id)}
+                          onClick={() => setReplyTo(message)}
+                          className="text-xs text-gray-400 hover:text-[#006400] transition-colors"
+                        >
+                          Reply
+                        </button>
+                        <button
+                          onClick={() => handleReaction(message._id, '❤️')}
                           className="text-xs text-gray-400 hover:text-red-500 transition-colors"
                         >
-                          🗑️
+                          ❤️
                         </button>
-                      )}
-                    </div>
+                        <button
+                          onClick={() => handleReaction(message._id, '👍')}
+                          className="text-xs text-gray-400 hover:text-blue-500 transition-colors"
+                        >
+                          👍
+                        </button>
+                        {isOwnMessage(message) && (
+                          <button
+                            onClick={() => handleDeleteMessage(message._id)}
+                            className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+                          >
+                            🗑️
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
             )}
             <div ref={messagesEndRef} />
           </div>
+
+          {/* New Messages Indicator */}
+          {hasNewMessages && (
+            <button
+              onClick={() => {
+                isUserScrollingRef.current = false;
+                setHasNewMessages(false);
+                scrollToBottom();
+              }}
+              className="absolute bottom-24 left-1/2 transform -translate-x-1/2 bg-[#006400] text-white px-4 py-2 rounded-full shadow-lg text-sm hover:bg-[#005a00] transition-colors z-10"
+            >
+              New messages ↓
+            </button>
+          )}
 
           {/* Reply Indicator */}
           {replyTo && (
@@ -329,7 +392,7 @@ const ChatRoom = () => {
           )}
 
           {/* Input */}
-          <form onSubmit={handleSendMessage} className="border-t border-gray-200 p-3">
+          <form onSubmit={handleSendMessage} className="border-t border-gray-200 p-3 bg-white">
             <div className="flex items-center gap-2">
               <button
                 type="button"
