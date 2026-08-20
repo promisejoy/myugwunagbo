@@ -3,7 +3,22 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { supabase } = require('../config/supabase');
+const { createClient } = require('@supabase/supabase-js');
+
+// Initialize Supabase client directly in this file to ensure storage is available
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('❌ Missing Supabase environment variables in service.routes.js');
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
 
 // Configure multer for file uploads
 const uploadDir = path.join(__dirname, '../../uploads/authorizations');
@@ -147,28 +162,46 @@ router.post('/apply-with-file', upload.single('authorization_file'), async (req,
     let authorization_file_url = null;
     let authorization_file_name = null;
     
+    // Handle file upload to Supabase Storage
     if (req.file) {
       try {
-        const filePath = `authorizations/${Date.now()}_${req.file.originalname}`;
-        const fileBuffer = fs.readFileSync(req.file.path);
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('service-documents')
-          .upload(filePath, fileBuffer, {
-            contentType: req.file.mimetype,
-            upsert: true
-          });
-        
-        if (!uploadError) {
-          const { data: urlData } = supabase.storage
-            .from('service-documents')
-            .getPublicUrl(filePath);
-          authorization_file_url = urlData.publicUrl;
-          authorization_file_name = req.file.originalname;
+        // Check if storage is available
+        if (!supabase.storage) {
+          console.warn('⚠️ Supabase storage not available, skipping file upload');
+          // Clean up local file
+          if (req.file && req.file.path) fs.unlink(req.file.path, () => {});
+        } else {
+          const filePath = `authorizations/${Date.now()}_${req.file.originalname}`;
+          const fileBuffer = fs.readFileSync(req.file.path);
+          
+          // Try to upload to Supabase Storage
+          try {
+            const { data: uploadData, error: uploadError } = await supabase.storage
+              .from('service-documents')
+              .upload(filePath, fileBuffer, {
+                contentType: req.file.mimetype,
+                upsert: true
+              });
+            
+            if (!uploadError && uploadData) {
+              const { data: urlData } = supabase.storage
+                .from('service-documents')
+                .getPublicUrl(filePath);
+              authorization_file_url = urlData.publicUrl;
+              authorization_file_name = req.file.originalname;
+              console.log('✅ File uploaded to Supabase storage');
+            } else {
+              console.error('❌ Upload error:', uploadError);
+            }
+          } catch (storageError) {
+            console.error('❌ Storage upload error:', storageError);
+          }
+          
+          // Clean up local file
+          if (req.file && req.file.path) fs.unlink(req.file.path, () => {});
         }
-        fs.unlink(req.file.path, () => {});
-      } catch (uploadError) {
-        console.error('File upload error:', uploadError);
+      } catch (fileError) {
+        console.error('❌ File processing error:', fileError);
         if (req.file && req.file.path) fs.unlink(req.file.path, () => {});
       }
     }
@@ -211,16 +244,56 @@ router.post('/apply-with-file', upload.single('authorization_file'), async (req,
 // ============================================
 // GET SERVICE PRICES
 // ============================================
-// GET /api/service-applications/prices
 router.get('/prices', async (req, res) => {
   try {
+    console.log('📤 Fetching service prices...');
+    
+    // Check if table exists
+    const { data: tableCheck, error: tableError } = await supabase
+      .from('service_prices')
+      .select('count')
+      .limit(1);
+    
+    if (tableError) {
+      console.error('❌ Table check error:', tableError);
+      
+      // If table doesn't exist, return default prices
+      if (tableError.message && tableError.message.includes('does not exist')) {
+        console.log('ℹ️  service_prices table does not exist yet, returning default prices');
+        return res.json({
+          success: true,
+          data: {
+            'Birth Certificate': { amount: 5000, currency: 'NGN', description: 'Birth certificate processing' },
+            'Marriage Certificate': { amount: 10000, currency: 'NGN', description: 'Marriage certificate processing' },
+            'Local Government of Origin': { amount: 3000, currency: 'NGN', description: 'LGA origin certificate' },
+            'Business Permit': { amount: 15000, currency: 'NGN', description: 'Business permit processing' },
+            'Building Plan Approval': { amount: 20000, currency: 'NGN', description: 'Building plan approval' },
+            'Tax Clearance Certificate': { amount: 5000, currency: 'NGN', description: 'Tax clearance certificate' },
+            'Market Stall Permit': { amount: 8000, currency: 'NGN', description: 'Market stall permit' },
+            'Social Welfare': { amount: 3000, currency: 'NGN', description: 'Social welfare application' },
+            'Village Directory': { amount: 2000, currency: 'NGN', description: 'Village directory listing' },
+            'Other': { amount: 5000, currency: 'NGN', description: 'Other services' }
+          }
+        });
+      }
+      
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Database error: ' + tableError.message 
+      });
+    }
+    
+    // Fetch all prices
     const { data, error } = await supabase
       .from('service_prices')
       .select('*');
     
     if (error) {
-      console.error('Error fetching service prices:', error);
-      return res.json({ success: true, data: {} });
+      console.error('❌ Error fetching service prices:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Database error: ' + error.message 
+      });
     }
     
     const prices = {};
@@ -232,12 +305,18 @@ router.get('/prices', async (req, res) => {
       };
     });
     
+    console.log('✅ Service prices fetched successfully');
     res.json({ success: true, data: prices });
+    
   } catch (error) {
-    console.error('Error fetching service prices:', error);
-    res.status(500).json({ error: error.message || 'Failed to fetch service prices' });
+    console.error('❌ Unexpected error fetching service prices:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to fetch service prices' 
+    });
   }
 });
+
 // ============================================
 // UPDATE SERVICE PRICE
 // ============================================
@@ -261,7 +340,7 @@ router.put('/prices/:serviceType', async (req, res) => {
       });
     }
     
-    // Use upsert with onConflict - handles both insert and update
+    // Use upsert with onConflict
     const { data, error } = await supabase
       .from('service_prices')
       .upsert({
@@ -277,7 +356,7 @@ router.put('/prices/:serviceType', async (req, res) => {
       .single();
     
     if (error) {
-      console.error('Error updating service price:', error);
+      console.error('❌ Error updating service price:', error);
       return res.status(500).json({ 
         success: false,
         error: 'Database error: ' + error.message
@@ -291,7 +370,7 @@ router.put('/prices/:serviceType', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error updating service price:', error);
+    console.error('❌ Error updating service price:', error);
     res.status(500).json({ 
       success: false,
       error: error.message || 'Failed to update service price'

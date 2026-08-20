@@ -1,38 +1,38 @@
 const { createClient } = require('@supabase/supabase-js');
+const dotenv = require('dotenv');
 
-// Environment variables should already be loaded by server.js
+dotenv.config();
+
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-console.log('🔍 Checking Supabase config...');
-console.log('SUPABASE_URL exists:', !!supabaseUrl);
-console.log('SUPABASE_SERVICE_ROLE_KEY exists:', !!supabaseKey);
-
-if (!supabaseUrl || !supabaseKey) {
+if (!supabaseUrl || !supabaseServiceKey) {
   console.error('❌ Missing Supabase environment variables!');
-  console.error('SUPABASE_URL:', supabaseUrl || 'undefined');
-  console.error('SUPABASE_SERVICE_ROLE_KEY:', supabaseKey ? '***present***' : 'undefined');
-  console.error('Please check your .env file in the backend folder');
-  // Don't throw error, let the app handle it gracefully
+  console.error('SUPABASE_URL:', supabaseUrl ? '✅ Set' : '❌ Missing');
+  console.error('SUPABASE_SERVICE_ROLE_KEY:', supabaseServiceKey ? '✅ Set' : '❌ Missing');
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
 
-// Test connection
-const testConnection = async () => {
+// Test the connection
+(async () => {
   try {
-    const { data, error } = await supabase.from('users').select('count').limit(1);
+    const { data, error } = await supabase.from('service_prices').select('count');
     if (error) {
-      console.warn('⚠️ Supabase connection warning:', error.message);
+      console.error('❌ Supabase connection error:', error.message);
+      console.log('ℹ️  Please create the service_prices table in Supabase');
     } else {
       console.log('✅ Supabase connected successfully');
+      console.log('📊 service_prices table exists with', data?.[0]?.count || 0, 'records');
     }
   } catch (error) {
-    console.warn('⚠️ Supabase connection warning:', error.message);
+    console.error('❌ Supabase connection test failed:', error.message);
   }
-};
-
-// Test connection in background
-testConnection();
+})();
 
 module.exports = supabase;
