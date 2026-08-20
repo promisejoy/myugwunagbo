@@ -41,7 +41,7 @@ const ChatRoom = () => {
   const inputRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const isUserScrollingRef = useRef(false);
-  const lastMessageCountRef = useRef(0);
+  const lastMessageIdsRef = useRef(new Set());
 
   // Load messages and users
   useEffect(() => {
@@ -49,33 +49,36 @@ const ChatRoom = () => {
       loadMessages();
       loadUsers();
       
-      // ✅ Poll less aggressively - every 3 seconds is fine
+      // ✅ Poll every 4 seconds - less frequent, less shaking
       const interval = setInterval(() => {
         loadMessages();
-      }, 3000);
+      }, 4000);
       
       return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
 
-  // Load messages - optimized with useCallback
+  // ✅ Load messages - only update if new messages exist
   const loadMessages = useCallback(async () => {
     try {
       const response = await api.getChatMessages();
       const newMessages = response.data || [];
       
-      // Check if there are actually new messages
-      if (newMessages.length !== lastMessageCountRef.current) {
-        lastMessageCountRef.current = newMessages.length;
+      // ✅ Check if there are actually new messages by comparing IDs
+      const currentIds = new Set(messages.map(m => m._id || m.id));
+      const newIds = new Set(newMessages.map(m => m._id || m.id));
+      
+      // Check if any new message IDs are not in the current set
+      const hasNew = [...newIds].some(id => !currentIds.has(id));
+      
+      if (hasNew) {
         setMessages(newMessages);
+        lastMessageIdsRef.current = newIds;
         
         // Only auto-scroll if user hasn't scrolled up
         if (!isUserScrollingRef.current) {
-          setTimeout(() => {
-            scrollToBottom();
-          }, 50);
+          setTimeout(() => scrollToBottom(), 50);
         } else {
-          // Show indicator that new messages are available
           setHasNewMessages(true);
         }
       }
@@ -84,7 +87,7 @@ const ChatRoom = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [messages]);
 
   const loadUsers = async () => {
     try {
@@ -101,34 +104,32 @@ const ChatRoom = () => {
     }
   };
 
-  // ✅ Handle user scroll - mark when user is scrolling up
+  // ✅ Handle user scroll - prevent auto-scroll when user is scrolling up
   const handleScroll = () => {
     const container = messagesContainerRef.current;
     if (!container) return;
     
     const { scrollTop, scrollHeight, clientHeight } = container;
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 50;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
     
-    // If user scrolls up, stop auto-scrolling
     isUserScrollingRef.current = !isNearBottom;
     
-    // If user scrolls back to bottom, enable auto-scroll
     if (isNearBottom) {
       isUserScrollingRef.current = false;
       setHasNewMessages(false);
     }
   };
 
-  // ✅ Send message - fast and optimistic
+  // ✅ Send message - instant with optimistic update
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() || isSending) return;
 
     setIsSending(true);
     
-    // Create optimistic message
+    const tempId = `temp-${Date.now()}`;
     const optimisticMessage = {
-      _id: `temp-${Date.now()}`,
+      _id: tempId,
       content: newMessage.trim(),
       user_id: user?.id,
       user: { username: user?.username || 'You', full_name: user?.fullName || '' },
@@ -137,15 +138,13 @@ const ChatRoom = () => {
       isOptimistic: true
     };
 
-    // Add optimistically
+    // ✅ Add message instantly
     setMessages(prev => [...prev, optimisticMessage]);
     setNewMessage('');
     setReplyTo(null);
     
-    // ✅ Immediately scroll to bottom for new message
-    setTimeout(() => {
-      scrollToBottom();
-    }, 50);
+    // ✅ Scroll to bottom immediately
+    setTimeout(() => scrollToBottom(), 10);
 
     try {
       const messageData = {
@@ -155,19 +154,18 @@ const ChatRoom = () => {
       
       const response = await api.sendChatMessage(messageData);
       
-      // Replace optimistic message with real one
+      // ✅ Replace optimistic with real message
       setMessages(prev => 
         prev.map(msg => 
-          msg._id === optimisticMessage._id ? response.data : msg
+          msg._id === tempId ? response.data : msg
         )
       );
       
-      lastMessageCountRef.current += 1;
+      lastMessageIdsRef.current.add(response.data._id || response.data.id);
       inputRef.current?.focus();
     } catch (error) {
       console.error('Error sending message:', error);
-      // Remove optimistic message on error
-      setMessages(prev => prev.filter(msg => msg._id !== optimisticMessage._id));
+      setMessages(prev => prev.filter(msg => msg._id !== tempId));
       toast.error('Failed to send message');
     } finally {
       setIsSending(false);
@@ -177,8 +175,9 @@ const ChatRoom = () => {
   const handleReaction = async (messageId, emoji) => {
     try {
       await api.reactToMessage(messageId, { emoji });
-      // Refresh messages to show updated reactions - but preserve scroll position
-      await loadMessages();
+      // ✅ Just refresh quietly without triggering scroll
+      const response = await api.getChatMessages();
+      setMessages(response.data || []);
     } catch (error) {
       console.error('Error reacting to message:', error);
       toast.error('Failed to add reaction');
@@ -189,7 +188,8 @@ const ChatRoom = () => {
     if (!window.confirm('Delete this message?')) return;
     try {
       await api.deleteChatMessage(messageId);
-      setMessages(messages.filter(m => m._id !== messageId));
+      setMessages(messages.filter(m => (m._id || m.id) !== messageId));
+      lastMessageIdsRef.current.delete(messageId);
       toast.success('Message deleted');
     } catch (error) {
       console.error('Error deleting message:', error);
@@ -222,10 +222,10 @@ const ChatRoom = () => {
     return message.userId === user?.id || message.user?.id === user?.id || message.isOptimistic;
   };
 
-  // Scroll to bottom on initial load
+  // ✅ Initial scroll - only once
   useEffect(() => {
     if (!loading && messages.length > 0) {
-      scrollToBottom();
+      setTimeout(() => scrollToBottom(), 100);
     }
   }, [loading]);
 

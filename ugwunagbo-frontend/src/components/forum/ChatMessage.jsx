@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { FaReply, FaTrash, FaHeart, FaSmile } from 'react-icons/fa';
+import React, { memo } from 'react';
+import { FaReply, FaTrash } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 
-const ChatMessage = ({ message, onReply, onReact, onDelete, isOwn }) => {
-  const [showReactions, setShowReactions] = useState(false);
+// ✅ Using memo to prevent unnecessary re-renders
+const ChatMessage = memo(({ message, onReply, onReact, onDelete, isOwn }) => {
   const { user } = useAuth();
 
   const formatTime = (dateString) => {
@@ -11,7 +11,21 @@ const ChatMessage = ({ message, onReply, onReact, onDelete, isOwn }) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const reactions = ['❤️', '😂', '😮', '😢', '😡', '👍'];
+  // ✅ Memoize reactions to prevent recalculating on every render
+  const reactionElements = React.useMemo(() => {
+    if (!message.reactions || message.reactions.length === 0) return null;
+    
+    const grouped = message.reactions.reduce((acc, r) => {
+      acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+      return acc;
+    }, {});
+    
+    return Object.entries(grouped).map(([emoji, count]) => (
+      <span key={`${emoji}-${count}`} className="inline-flex items-center gap-1 bg-white/20 rounded-full px-2 py-0.5 text-xs">
+        {emoji} {count}
+      </span>
+    ));
+  }, [message.reactions]);
 
   return (
     <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-3`}>
@@ -38,18 +52,9 @@ const ChatMessage = ({ message, onReply, onReact, onDelete, isOwn }) => {
           </div>
           
           {/* Reactions */}
-          {message.reactions && message.reactions.length > 0 && (
+          {reactionElements && (
             <div className="flex flex-wrap gap-1 mt-1">
-              {Object.entries(
-                message.reactions.reduce((acc, r) => {
-                  acc[r.emoji] = (acc[r.emoji] || 0) + 1;
-                  return acc;
-                }, {})
-              ).map(([emoji, count]) => (
-                <span key={emoji} className="inline-flex items-center gap-1 bg-white/20 rounded-full px-2 py-0.5 text-xs">
-                  {emoji} {count}
-                </span>
-              ))}
+              {reactionElements}
             </div>
           )}
         </div>
@@ -80,6 +85,8 @@ const ChatMessage = ({ message, onReply, onReact, onDelete, isOwn }) => {
       </div>
     </div>
   );
-};
+});
+
+ChatMessage.displayName = 'ChatMessage';
 
 export default ChatMessage;
