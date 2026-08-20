@@ -106,7 +106,7 @@ const HomePage = () => {
   // Stats Data
   const stats = [
     { number: '30+', label: 'Years of Service', icon: FaHistory },
-    { number: '100,000K+', label: 'Residents', icon: FaUsers },
+    { number: '90,000K+', label: 'Residents', icon: FaUsers },
     { number: '27', label: 'Autonomous Communities', icon: FaBuilding },
     { number: '100%', label: 'Hospitable', icon: FaHandshake },
   ];
@@ -155,7 +155,7 @@ const HomePage = () => {
                 <div className="text-4xl text-[#006400] mb-3 flex justify-center transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6">
                   <stat.icon />
                 </div>
-                <div className="text-3xl md:text-4xl font-bold text-[#006400] mb-1">{stat.number}</div>
+                <div className="text-3xl md:text-3xl font-bold text-[#006400] mb-1">{stat.number}</div>
                 <div className="text-sm text-gray-500 font-medium uppercase tracking-wide">{stat.label}</div>
                 <div className="w-12 h-1 bg-[#ffcc00] mx-auto mt-3 rounded-full transition-all duration-500 group-hover:w-20"></div>
               </div>
@@ -172,7 +172,7 @@ const HomePage = () => {
             <div className="w-24 h-1 bg-[#ffcc00] mx-auto mt-4 rounded-full"></div>
           </div>
           
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+          <div className="grid grid-cols-1 text-center lg:grid-cols-2 gap-16 items-center">
             <div className="about-text space-y-4">
               <h3 className="text-2xl md:text-3xl font-bold text-gray-800">Our History & Vision</h3>
               <p className="text-gray-600 leading-relaxed text-base">

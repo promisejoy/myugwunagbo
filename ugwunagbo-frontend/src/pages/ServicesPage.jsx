@@ -21,12 +21,6 @@ const ServicesPage = () => {
       title: 'Social Welfare',
       description: 'Support programs for vulnerable groups including women, children, and the elderly.',
       color: 'text-purple-600'
-    },
-    {
-      icon: FaMapMarkedAlt,
-      title: 'Villages Directory',
-      description: 'Explore the list of villages in Ugwunagbo Local Government Area.',
-      color: 'text-orange-600'
     }
   ];
 
