@@ -3,8 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import { 
   FaPaperPlane, FaUser, FaSmile, FaTimes, FaReply, FaTrash, 
-  FaImage, FaFile, FaTimesCircle, FaSpinner, FaUsers,
-  FaComments
+  FaImage, FaFile, FaSpinner, FaUsers, FaComments,
+  FaHeart, FaThumbsUp, FaLaugh, FaSadCry, FaAngry, FaSurprise
 } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 
@@ -73,126 +73,137 @@ const FilePreview = memo(({ file, onRemove }) => {
 
 // ---------- Chat Message Component ----------
 const ChatMessage = memo(({ message, onReply, onReact, onDelete, isOwn }) => {
+  const [showReactions, setShowReactions] = useState(false);
+  
   const formatTime = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // ✅ Get message ID safely - check multiple possible ID fields
   const messageId = message?._id || message?.id;
-  
   const isImage = message?.file_type?.startsWith('image/');
   const isVideo = message?.file_type?.startsWith('video/');
 
-  // ✅ Handle reaction with proper ID
+  // Group reactions
+  const groupedReactions = React.useMemo(() => {
+    if (!message?.reactions || message.reactions.length === 0) return null;
+    const grouped = message.reactions.reduce((acc, r) => {
+      acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+      return acc;
+    }, {});
+    return Object.entries(grouped);
+  }, [message?.reactions]);
+
+  const quickReactions = [
+    { emoji: '❤️', label: 'Love' },
+    { emoji: '😂', label: 'Laugh' },
+    { emoji: '😮', label: 'Wow' },
+    { emoji: '😢', label: 'Sad' },
+    { emoji: '😡', label: 'Angry' },
+    { emoji: '👍', label: 'Like' }
+  ];
+
   const handleReact = (emoji) => {
     if (messageId) {
       onReact(messageId, emoji);
-    } else {
-      console.error('Cannot react: message ID not found', message);
-      toast.error('Cannot react to this message');
+      setShowReactions(false);
     }
   };
-
-  const handleDelete = () => {
-    if (messageId) {
-      onDelete(messageId);
-    } else {
-      console.error('Cannot delete: message ID not found', message);
-      toast.error('Cannot delete this message');
-    }
-  };
-
-  const handleReply = () => {
-    if (message) {
-      onReply(message);
-    }
-  };
-
-  // ✅ Check if the message has reactions
-  const hasReactions = message?.reactions && message.reactions.length > 0;
-  
-  // ✅ Group reactions for display
-  const groupedReactions = React.useMemo(() => {
-    if (!hasReactions) return null;
-    return Object.entries(
-      message.reactions.reduce((acc, r) => {
-        acc[r.emoji] = (acc[r.emoji] || 0) + 1;
-        return acc;
-      }, {})
-    );
-  }, [message?.reactions]);
 
   return (
-    <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-3`}>
+    <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-3 group`}>
       <div className={`max-w-[75%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
         {!isOwn && (
           <span className="text-xs font-medium text-gray-600 mb-1">
             {message?.user?.username || 'Anonymous'}
           </span>
         )}
-        <div
-          className={`rounded-2xl px-4 py-2 ${
-            isOwn ? 'bg-[#006400] text-white' : 'bg-gray-100 text-gray-800'
-          }`}
-        >
-          {message?.replyTo && (
-            <div className="text-xs opacity-70 mb-1 bg-white/10 rounded p-1.5">
-              <span className="font-medium">@{message.replyTo.user?.username}</span>
-              <span className="ml-1">{message.replyTo.content?.substring(0, 50)}...</span>
+        <div className="relative">
+          <div
+            className={`rounded-2xl px-4 py-2 ${
+              isOwn ? 'bg-[#006400] text-white' : 'bg-gray-100 text-gray-800'
+            }`}
+          >
+            {message?.replyTo && (
+              <div className="text-xs opacity-70 mb-1 bg-white/10 rounded p-1.5">
+                <span className="font-medium">@{message.replyTo.user?.username}</span>
+                <span className="ml-1">{message.replyTo.content?.substring(0, 50)}...</span>
+              </div>
+            )}
+            
+            {/* File/Media Display */}
+            {message?.file_url && isImage && (
+              <img 
+                src={message.file_url} 
+                alt={message.file_name || 'Image'} 
+                className="max-w-full max-h-48 rounded-lg mb-2"
+                loading="lazy"
+              />
+            )}
+            {message?.file_url && isVideo && (
+              <video 
+                src={message.file_url} 
+                controls 
+                className="max-w-full max-h-48 rounded-lg mb-2"
+              />
+            )}
+            {message?.file_url && !isImage && !isVideo && (
+              <a 
+                href={message.file_url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-sm underline mb-2"
+              >
+                <FaFile /> {message.file_name || 'Attachment'}
+              </a>
+            )}
+            
+            <p className="text-sm break-words">{message?.content}</p>
+            <div className="flex items-center gap-1 mt-1">
+              <span className="text-[10px] opacity-70">{formatTime(message?.created_at)}</span>
+            </div>
+          </div>
+
+          {/* Reactions Display */}
+          {groupedReactions && groupedReactions.length > 0 && (
+            <div className="flex flex-wrap gap-0.5 mt-1">
+              {groupedReactions.map(([emoji, count]) => (
+                <button
+                  key={emoji}
+                  onClick={() => handleReact(emoji)}
+                  className="inline-flex items-center gap-0.5 bg-gray-200 hover:bg-gray-300 rounded-full px-1.5 py-0.5 text-xs transition-colors"
+                >
+                  {emoji} {count > 1 && <span className="text-[10px]">{count}</span>}
+                </button>
+              ))}
             </div>
           )}
-          
-          {/* File/Media Display */}
-          {message?.file_url && isImage && (
-            <img 
-              src={message.file_url} 
-              alt={message.file_name || 'Image'} 
-              className="max-w-full max-h-48 rounded-lg mb-2"
-              loading="lazy"
-            />
-          )}
-          {message?.file_url && isVideo && (
-            <video 
-              src={message.file_url} 
-              controls 
-              className="max-w-full max-h-48 rounded-lg mb-2"
-            />
-          )}
-          {message?.file_url && !isImage && !isVideo && (
-            <a 
-              href={message.file_url} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-sm underline mb-2"
-            >
-              <FaFile /> {message.file_name || 'Attachment'}
-            </a>
-          )}
-          
-          <p className="text-sm break-words">{message?.content}</p>
-          <div className="flex items-center gap-1 mt-1">
-            <span className="text-[10px] opacity-70">{formatTime(message?.created_at)}</span>
-          </div>
-          
-          {/* Reactions */}
-          {hasReactions && groupedReactions && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {groupedReactions.map(([emoji, count]) => (
-                <span key={emoji} className="inline-flex items-center gap-1 bg-white/20 rounded-full px-2 py-0.5 text-xs">
-                  {emoji} {count}
-                </span>
-              ))}
+
+          {/* Quick Reaction Buttons - on hover */}
+          {!message?.isOptimistic && messageId && (
+            <div className="absolute -bottom-2 left-0 right-0 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <div className="bg-white rounded-full shadow-lg border border-gray-200 px-2 py-1 flex gap-0.5">
+                {quickReactions.map(({ emoji }) => (
+                  <button
+                    key={emoji}
+                    onClick={() => handleReact(emoji)}
+                    className="hover:scale-125 transition-transform text-lg hover:bg-gray-100 rounded-full p-0.5"
+                    title={emoji}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Actions - Only show for real messages (not optimistic) */}
+        {/* Actions */}
         {!message?.isOptimistic && messageId && (
           <div className="flex items-center gap-1 mt-1">
             <button
-              onClick={handleReply}
+              onClick={() => onReply(message)}
               className="text-xs text-gray-400 hover:text-[#006400] transition-colors"
             >
               <FaReply className="inline mr-0.5" size={10} /> Reply
@@ -200,34 +211,24 @@ const ChatMessage = memo(({ message, onReply, onReact, onDelete, isOwn }) => {
             <button
               onClick={() => handleReact('❤️')}
               className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-              title="❤️"
             >
               ❤️
             </button>
             <button
-              onClick={() => handleReact('👍')}
-              className="text-xs text-gray-400 hover:text-blue-500 transition-colors"
-              title="👍"
-            >
-              👍
-            </button>
-            <button
               onClick={() => handleReact('😂')}
               className="text-xs text-gray-400 hover:text-yellow-500 transition-colors"
-              title="😂"
             >
               😂
             </button>
             <button
-              onClick={() => handleReact('😮')}
-              className="text-xs text-gray-400 hover:text-purple-500 transition-colors"
-              title="😮"
+              onClick={() => handleReact('👍')}
+              className="text-xs text-gray-400 hover:text-blue-500 transition-colors"
             >
-              😮
+              👍
             </button>
             {isOwn && (
               <button
-                onClick={handleDelete}
+                onClick={() => onDelete(messageId)}
                 className="text-xs text-gray-400 hover:text-red-500 transition-colors"
               >
                 <FaTrash size={10} />
@@ -252,6 +253,7 @@ const ChatRoom = () => {
   const [showUsers, setShowUsers] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [isReacting, setIsReacting] = useState(false);
   
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -394,30 +396,71 @@ const ChatRoom = () => {
     }
   };
 
-  // ✅ FIXED: handleReaction with proper ID and error handling
+  // ✅ FIXED: handleReaction with optimistic update
   const handleReaction = async (messageId, emoji) => {
     if (!messageId) {
-      console.error('❌ Cannot react: messageId is undefined');
       toast.error('Cannot react to this message');
       return;
     }
+
+    if (isReacting) return;
+    setIsReacting(true);
+
+    // Find the message to update
+    const messageIndex = messages.findIndex(m => (m._id || m.id) === messageId);
+    if (messageIndex === -1) {
+      setIsReacting(false);
+      return;
+    }
+
+    // Optimistic update - add/remove reaction locally
+    const updatedMessages = [...messages];
+    const message = updatedMessages[messageIndex];
     
+    // Check if user already reacted with this emoji
+    const existingReactionIndex = message.reactions?.findIndex(
+      r => r.user_id === user?.id && r.emoji === emoji
+    ) ?? -1;
+
+    let updatedReactions = [...(message.reactions || [])];
+    
+    if (existingReactionIndex >= 0) {
+      // Remove reaction
+      updatedReactions.splice(existingReactionIndex, 1);
+    } else {
+      // Add reaction
+      updatedReactions.push({
+        emoji,
+        user_id: user?.id,
+        user: { username: user?.username }
+      });
+    }
+
+    updatedMessages[messageIndex] = {
+      ...message,
+      reactions: updatedReactions
+    };
+
+    setMessages(updatedMessages);
+
     try {
-      console.log(`📤 Reacting to message ${messageId} with ${emoji}`);
+      // Send to server
       await api.reactToMessage(messageId, { emoji });
-      // Refresh messages to show updated reactions
+      // Refresh to sync with server
       await loadMessages();
-      toast.success(`Reacted with ${emoji}`);
     } catch (error) {
       console.error('Error reacting:', error);
+      // Revert on error - reload from server
+      await loadMessages();
       toast.error('Failed to add reaction');
+    } finally {
+      setIsReacting(false);
     }
   };
 
-  // ✅ FIXED: handleDelete with proper ID
+  // ✅ FIXED: handleDelete
   const handleDeleteMessage = async (messageId) => {
     if (!messageId) {
-      console.error('❌ Cannot delete: messageId is undefined');
       toast.error('Cannot delete this message');
       return;
     }
@@ -438,7 +481,6 @@ const ChatRoom = () => {
     return message.userId === user?.id || message.user?.id === user?.id || message.isOptimistic;
   };
 
-  // Get message ID safely
   const getMessageId = (message) => {
     return message?._id || message?.id;
   };
