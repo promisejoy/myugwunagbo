@@ -120,14 +120,18 @@ const ChatRoom = () => {
     }
   };
 
+  // ✅ FIXED: Added unique keys to reaction elements
   const getReactionEmojis = (reactions) => {
     if (!reactions || reactions.length === 0) return null;
     const grouped = reactions.reduce((acc, r) => {
       acc[r.emoji] = (acc[r.emoji] || 0) + 1;
       return acc;
     }, {});
-    return Object.entries(grouped).map(([emoji, count]) => (
-      <span key={emoji} className="inline-flex items-center gap-1 bg-gray-100 rounded-full px-2 py-0.5 text-sm">
+    return Object.entries(grouped).map(([emoji, count], index) => (
+      <span 
+        key={`${emoji}-${index}`} // ✅ Unique key using emoji and index
+        className="inline-flex items-center gap-1 bg-gray-100 rounded-full px-2 py-0.5 text-sm"
+      >
         {emoji} {count}
       </span>
     ));
@@ -140,6 +144,113 @@ const ChatRoom = () => {
 
   const isOwnMessage = (message) => {
     return message.userId === user?.id || message.user?.id === user?.id;
+  };
+
+  // ✅ FIXED: Added unique keys to messages
+  const renderMessages = () => {
+    if (loading) {
+      return (
+        <div className="flex justify-center items-center h-full">
+          <div className="animate-spin rounded-full h-8 w-8 border-4 border-[#006400] border-t-transparent"></div>
+        </div>
+      );
+    }
+
+    if (messages.length === 0) {
+      return (
+        <div className="text-center text-gray-400 mt-10">
+          <p>No messages yet</p>
+          <p className="text-sm">Be the first to say hello! 👋</p>
+        </div>
+      );
+    }
+
+    return messages.map((message) => (
+      <div
+        key={message._id || message.id} // ✅ Unique key using message ID
+        className={`flex ${isOwnMessage(message) ? 'justify-end' : 'justify-start'}`}
+      >
+        <div className={`max-w-[70%] ${isOwnMessage(message) ? 'items-end' : 'items-start'} flex flex-col`}>
+          {!isOwnMessage(message) && (
+            <span className="text-xs font-medium text-gray-600 mb-1">
+              {message.user?.username || 'Anonymous'}
+            </span>
+          )}
+          <div
+            className={`rounded-2xl px-4 py-2 ${
+              isOwnMessage(message)
+                ? 'bg-[#006400] text-white'
+                : 'bg-gray-100 text-gray-800'
+            }`}
+          >
+            {message.replyTo && (
+              <div className="text-xs opacity-70 mb-1 bg-white/10 rounded p-1.5">
+                <span className="font-medium">@{message.replyTo.user?.username}</span>
+                <span className="ml-1">{message.replyTo.content?.substring(0, 50)}...</span>
+              </div>
+            )}
+            <p className="text-sm break-words">{message.content}</p>
+            <div className="flex items-center gap-1 mt-1">
+              <span className="text-[10px] opacity-70">{formatTime(message.created_at)}</span>
+            </div>
+          </div>
+          
+          {/* Reactions */}
+          {message.reactions && message.reactions.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {getReactionEmojis(message.reactions)}
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 mt-1">
+            <button
+              onClick={() => setReplyTo(message)}
+              className="text-xs text-gray-400 hover:text-[#006400] transition-colors"
+            >
+              Reply
+            </button>
+            <button
+              onClick={() => handleReaction(message._id, '❤️')}
+              className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+            >
+              ❤️
+            </button>
+            <button
+              onClick={() => handleReaction(message._id, '👍')}
+              className="text-xs text-gray-400 hover:text-blue-500 transition-colors"
+            >
+              👍
+            </button>
+            {isOwnMessage(message) && (
+              <button
+                onClick={() => handleDeleteMessage(message._id)}
+                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+              >
+                🗑️
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    ));
+  };
+
+  // ✅ FIXED: Added unique keys to online users
+  const renderUsers = () => {
+    if (users.length === 0) {
+      return <p className="text-sm text-gray-400">No users online</p>;
+    }
+
+    return users.map((u) => (
+      <div 
+        key={u.id || u._id} // ✅ Unique key using user ID
+        className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-gray-100 transition-colors"
+      >
+        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+        <span className="text-sm text-gray-700 truncate">{u.username}</span>
+      </div>
+    ));
   };
 
   return (
@@ -166,101 +277,14 @@ const ChatRoom = () => {
         {showUsers && (
           <div className="w-48 border-r border-gray-200 bg-gray-50 overflow-y-auto p-3">
             <h4 className="text-sm font-semibold text-gray-700 mb-2">Online Users</h4>
-            {users.map((u) => (
-              <div key={u.id} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-gray-100 transition-colors">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span className="text-sm text-gray-700 truncate">{u.username}</span>
-              </div>
-            ))}
-            {users.length === 0 && (
-              <p className="text-sm text-gray-400">No users online</p>
-            )}
+            {renderUsers()}
           </div>
         )}
 
         {/* Messages */}
         <div className="flex-1 flex flex-col">
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {loading ? (
-              <div className="flex justify-center items-center h-full">
-                <div className="animate-spin rounded-full h-8 w-8 border-4 border-[#006400] border-t-transparent"></div>
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="text-center text-gray-400 mt-10">
-                <p>No messages yet</p>
-                <p className="text-sm">Be the first to say hello! 👋</p>
-              </div>
-            ) : (
-              messages.map((message) => (
-                <div
-                  key={message._id}
-                  className={`flex ${isOwnMessage(message) ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div className={`max-w-[70%] ${isOwnMessage(message) ? 'items-end' : 'items-start'} flex flex-col`}>
-                    {!isOwnMessage(message) && (
-                      <span className="text-xs font-medium text-gray-600 mb-1">
-                        {message.user?.username || 'Anonymous'}
-                      </span>
-                    )}
-                    <div
-                      className={`rounded-2xl px-4 py-2 ${
-                        isOwnMessage(message)
-                          ? 'bg-[#006400] text-white'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}
-                    >
-                      {message.replyTo && (
-                        <div className="text-xs opacity-70 mb-1 bg-white/10 rounded p-1.5">
-                          <span className="font-medium">@{message.replyTo.user?.username}</span>
-                          <span className="ml-1">{message.replyTo.content?.substring(0, 50)}...</span>
-                        </div>
-                      )}
-                      <p className="text-sm break-words">{message.content}</p>
-                      <div className="flex items-center gap-1 mt-1">
-                        <span className="text-[10px] opacity-70">{formatTime(message.created_at)}</span>
-                      </div>
-                    </div>
-                    
-                    {/* Reactions */}
-                    {message.reactions && message.reactions.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {getReactionEmojis(message.reactions)}
-                      </div>
-                    )}
-
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-2 mt-1">
-                      <button
-                        onClick={() => setReplyTo(message)}
-                        className="text-xs text-gray-400 hover:text-[#006400] transition-colors"
-                      >
-                        Reply
-                      </button>
-                      <button
-                        onClick={() => handleReaction(message._id, '❤️')}
-                        className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-                      >
-                        ❤️
-                      </button>
-                      <button
-                        onClick={() => handleReaction(message._id, '👍')}
-                        className="text-xs text-gray-400 hover:text-blue-500 transition-colors"
-                      >
-                        👍
-                      </button>
-                      {isOwnMessage(message) && (
-                        <button
-                          onClick={() => handleDeleteMessage(message._id)}
-                          className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-                        >
-                          🗑️
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
+            {renderMessages()}
             <div ref={messagesEndRef} />
           </div>
 
