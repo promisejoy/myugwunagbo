@@ -1,0 +1,17 @@
+{
+  "builds": [
+    {
+      "src": "ugwunagbo-frontend/**",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "ugwunagbo-frontend/dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "ugwunagbo-frontend/dist/index.html"
+    }
+  ]
+}
