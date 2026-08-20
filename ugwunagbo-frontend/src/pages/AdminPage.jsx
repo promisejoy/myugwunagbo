@@ -8,7 +8,8 @@ import {
   FaPlus, FaSave, FaTimesCircle, FaCheckCircle, FaSpinner,
   FaUserShield, FaChartLine, FaCalendarAlt, FaPhone, FaMapMarkerAlt,
   FaArrowRight, FaImage, FaVideo, FaFile, FaDownload, FaEye,
-  FaLock, FaUser, FaKey, FaSignOutAlt, FaFilePdf, FaClock, FaMoneyBillWave
+  FaLock, FaUser, FaKey, FaSignOutAlt, FaFilePdf, FaClock,
+  FaMoneyBillWave // ✅ THIS MUST BE HERE
 } from 'react-icons/fa';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
