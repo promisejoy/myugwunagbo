@@ -239,7 +239,7 @@ router.get('/prices', async (req, res) => {
 });
 
 // ============================================
-// UPDATE SERVICE PRICE (Fixed)
+// UPDATE SERVICE PRICE
 // ============================================
 router.put('/prices/:serviceType', async (req, res) => {
   try {
@@ -261,7 +261,7 @@ router.put('/prices/:serviceType', async (req, res) => {
       });
     }
     
-    // Use upsert with onConflict - this handles both insert and update
+    // Use upsert with onConflict - handles both insert and update
     const { data, error } = await supabase
       .from('service_prices')
       .upsert({

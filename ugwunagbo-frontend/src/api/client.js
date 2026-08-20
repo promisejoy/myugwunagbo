@@ -176,29 +176,23 @@ export const api = {
   
   // Service Applications
   getApplications: () => apiClient.get('/api/service-applications'),
-  
-  // ✅ UPDATED: Submit application with optional file upload
   submitApplication: (data) => {
     console.log('📤 Submitting application data:', data);
     return apiClient.post('/api/service-applications', data);
   },
   
-  // ✅ NEW: Submit application with file upload (for traditional ruler authorization)
   submitApplicationWithFile: (formData) => {
     console.log('📤 Submitting application with file...');
     return apiClient.post('/api/service-applications/apply-with-file', formData, {
-      headers: {} // Let axios set the correct Content-Type with boundary
+      headers: {}
     });
   },
   
-  // ✅ NEW: Get service prices
- // In src/api/client.js
-getServicePrices: () => {
-  console.log('📤 Fetching service prices...');
-  return apiClient.get('/api/service-applications/prices');
-},
+  getServicePrices: () => {
+    console.log('📤 Fetching service prices...');
+    return apiClient.get('/api/service-applications/prices');
+  },
   
-  // ✅ NEW: Update service price (Admin only)
   updateServicePrice: (serviceType, data) => {
     console.log(`📤 Updating price for ${serviceType}:`, data);
     return apiClient.put(`/api/service-applications/prices/${encodeURIComponent(serviceType)}`, data);

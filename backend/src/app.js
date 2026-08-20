@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
-const fs = require('fs');
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
@@ -23,62 +22,34 @@ const budgetRoutes = require('./routes/budget.routes');
 
 const app = express();
 
-// Middleware
+// ============================================
+// ✅ SIMPLEST CORS - ALLOW EVERYTHING (FOR TESTING)
+// ============================================
+// This allows ANY origin to access your API
+// Once everything works, you can restrict it
+app.use(cors({
+  origin: true, // Allow all origins
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
+// ============================================
+// Helmet (with relaxed settings)
+// ============================================
 app.use(helmet({ 
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// ============================================
-// ✅ FIXED CORS CONFIGURATION
-// ============================================
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:5000',
-  'https://myugwunagbo-8mw4.vercel.app',
-  process.env.CLIENT_URL
-].filter(Boolean).map(origin => origin.replace(/\/$/, '')); // Remove trailing slashes
-
-console.log('🌐 Allowed CORS origins:', allowedOrigins);
-
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl)
-    if (!origin) {
-      return callback(null, true);
-    }
-    
-    // Clean the origin (remove trailing slash)
-    const cleanOrigin = origin.replace(/\/$/, '');
-    
-    // Check if the clean origin is allowed (case-insensitive)
-    const isAllowed = allowedOrigins.some(allowed => 
-      allowed.toLowerCase() === cleanOrigin.toLowerCase()
-    );
-    
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      console.log('❌ CORS blocked:', origin);
-      console.log('   Allowed origins:', allowedOrigins);
-      callback(new Error(`CORS blocked: ${origin} is not allowed`));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range']
-}));
-
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Static files (if you have any)
+// Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Log all requests (custom)
+// Logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
@@ -146,7 +117,6 @@ app.use('/api/budgets', budgetRoutes);
 app.use((err, req, res, next) => {
   console.error('❌ Error:', err.stack);
   
-  // Handle specific error types
   if (err.name === 'UnauthorizedError') {
     return res.status(401).json({ error: 'Invalid token' });
   }
@@ -155,7 +125,6 @@ app.use((err, req, res, next) => {
     return res.status(400).json({ error: err.message });
   }
   
-  // Default error
   res.status(err.status || 500).json({
     error: err.message || 'Internal server error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
@@ -165,8 +134,7 @@ app.use((err, req, res, next) => {
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ 
-    error: `Route not found: ${req.method} ${req.url}`,
-    message: 'The endpoint you are looking for does not exist'
+    error: `Route not found: ${req.method} ${req.url}`
   });
 });
 
