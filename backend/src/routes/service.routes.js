@@ -406,50 +406,75 @@ router.get('/prices', async (req, res) => {
 // ============================================
 // UPDATE SERVICE PRICE
 // ============================================
+// Update service price (Admin only)
 router.put('/prices/:serviceType', async (req, res) => {
   try {
     const { serviceType } = req.params;
     const { amount, currency, description } = req.body;
     
-    if (amount === undefined || amount === null || amount < 0) {
+    if (!amount || amount < 0) {
       return res.status(400).json({ 
         success: false,
         error: 'Invalid amount. Please enter a positive number.'
       });
     }
     
-    const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount)) {
-      return res.status(400).json({ 
+    // First, try to update existing record
+    const { data: existingData, error: findError } = await supabase
+      .from('service_prices')
+      .select('*')
+      .eq('service_type', serviceType)
+      .maybeSingle();
+    
+    if (findError && findError.code !== 'PGRST116') {
+      console.error('Error finding service price:', findError);
+      return res.status(500).json({
         success: false,
-        error: 'Amount must be a valid number.'
+        error: 'Database error: ' + findError.message
       });
     }
     
-    const { data, error } = await supabase
-      .from('service_prices')
-      .upsert({
-        service_type: serviceType,
-        amount: parsedAmount,
-        currency: currency || 'NGN',
-        description: description ? description.trim() : null,
-        updated_at: new Date().toISOString()
-      })
-      .select()
-      .single();
+    let result;
     
-    if (error) {
-      console.error('Error updating service price:', error);
-      return res.status(500).json({ 
-        success: false,
-        error: 'Database error: ' + error.message
-      });
+    if (existingData) {
+      // Update existing record
+      const { data, error } = await supabase
+        .from('service_prices')
+        .update({
+          amount: parseFloat(amount),
+          currency: currency || 'NGN',
+          description: description ? description.trim() : null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('service_type', serviceType)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      result = data;
+    } else {
+      // Insert new record
+      const { data, error } = await supabase
+        .from('service_prices')
+        .insert({
+          service_type: serviceType,
+          amount: parseFloat(amount),
+          currency: currency || 'NGN',
+          description: description ? description.trim() : null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      result = data;
     }
     
     res.json({
       success: true,
       message: 'Service price updated successfully',
-      data: data
+      data: result
     });
     
   } catch (error) {
@@ -460,7 +485,6 @@ router.put('/prices/:serviceType', async (req, res) => {
     });
   }
 });
-
 // ============================================
 // UPDATE APPLICATION STATUS
 // ============================================
