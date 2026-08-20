@@ -8,7 +8,7 @@ import {
   FaPlus, FaSave, FaTimesCircle, FaCheckCircle, FaSpinner,
   FaUserShield, FaChartLine, FaCalendarAlt, FaPhone, FaMapMarkerAlt,
   FaArrowRight, FaImage, FaVideo, FaFile, FaDownload, FaEye,
-  FaLock, FaUser, FaKey, FaSignOutAlt, FaFilePdf, FaClock
+  FaLock, FaUser, FaKey, FaSignOutAlt, FaFilePdf, FaClock, FaMoneyBillWave
 } from 'react-icons/fa';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
@@ -158,6 +158,7 @@ const AdminPage = () => {
     type: 'danger',
     onConfirm: null
   });
+  
   // ---------- SERVICE PRICES MANAGEMENT ----------
 const [servicePrices, setServicePrices] = useState({});
 const [priceForm, setPriceForm] = useState({
@@ -166,6 +167,19 @@ const [priceForm, setPriceForm] = useState({
   currency: 'NGN',
   description: ''
 });
+// Add this after the form states
+const serviceTypes = [
+  'Birth Certificate',
+  'Marriage Certificate',
+  'Local Government of Origin',
+  'Business Permit',
+  'Building Plan Approval',
+  'Tax Clearance Certificate',
+  'Market Stall Permit',
+  'Social Welfare',
+  'Village Directory',
+  'Other'
+];
 
 // Fetch service prices
 const loadServicePrices = async () => {
