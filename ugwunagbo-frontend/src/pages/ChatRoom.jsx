@@ -79,21 +79,28 @@ const ChatMessage = memo(({ message, onReply, onReact, onDelete, isOwn }) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Get message ID safely
+  // ✅ Get message ID safely - check multiple possible ID fields
   const messageId = message?._id || message?.id;
   
   const isImage = message?.file_type?.startsWith('image/');
   const isVideo = message?.file_type?.startsWith('video/');
 
+  // ✅ Handle reaction with proper ID
   const handleReact = (emoji) => {
     if (messageId) {
       onReact(messageId, emoji);
+    } else {
+      console.error('Cannot react: message ID not found', message);
+      toast.error('Cannot react to this message');
     }
   };
 
   const handleDelete = () => {
     if (messageId) {
       onDelete(messageId);
+    } else {
+      console.error('Cannot delete: message ID not found', message);
+      toast.error('Cannot delete this message');
     }
   };
 
@@ -102,6 +109,20 @@ const ChatMessage = memo(({ message, onReply, onReact, onDelete, isOwn }) => {
       onReply(message);
     }
   };
+
+  // ✅ Check if the message has reactions
+  const hasReactions = message?.reactions && message.reactions.length > 0;
+  
+  // ✅ Group reactions for display
+  const groupedReactions = React.useMemo(() => {
+    if (!hasReactions) return null;
+    return Object.entries(
+      message.reactions.reduce((acc, r) => {
+        acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+        return acc;
+      }, {})
+    );
+  }, [message?.reactions]);
 
   return (
     <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-3`}>
@@ -156,14 +177,9 @@ const ChatMessage = memo(({ message, onReply, onReact, onDelete, isOwn }) => {
           </div>
           
           {/* Reactions */}
-          {message?.reactions && message.reactions.length > 0 && (
+          {hasReactions && groupedReactions && (
             <div className="flex flex-wrap gap-1 mt-1">
-              {Object.entries(
-                message.reactions.reduce((acc, r) => {
-                  acc[r.emoji] = (acc[r.emoji] || 0) + 1;
-                  return acc;
-                }, {})
-              ).map(([emoji, count]) => (
+              {groupedReactions.map(([emoji, count]) => (
                 <span key={emoji} className="inline-flex items-center gap-1 bg-white/20 rounded-full px-2 py-0.5 text-xs">
                   {emoji} {count}
                 </span>
@@ -172,35 +188,53 @@ const ChatMessage = memo(({ message, onReply, onReact, onDelete, isOwn }) => {
           )}
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-1 mt-1">
-          <button
-            onClick={handleReply}
-            className="text-xs text-gray-400 hover:text-[#006400] transition-colors"
-          >
-            <FaReply className="inline mr-0.5" size={10} /> Reply
-          </button>
-          <button
-            onClick={() => handleReact('❤️')}
-            className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-          >
-            ❤️
-          </button>
-          <button
-            onClick={() => handleReact('👍')}
-            className="text-xs text-gray-400 hover:text-blue-500 transition-colors"
-          >
-            👍
-          </button>
-          {isOwn && (
+        {/* Actions - Only show for real messages (not optimistic) */}
+        {!message?.isOptimistic && messageId && (
+          <div className="flex items-center gap-1 mt-1">
             <button
-              onClick={handleDelete}
-              className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+              onClick={handleReply}
+              className="text-xs text-gray-400 hover:text-[#006400] transition-colors"
             >
-              <FaTrash size={10} />
+              <FaReply className="inline mr-0.5" size={10} /> Reply
             </button>
-          )}
-        </div>
+            <button
+              onClick={() => handleReact('❤️')}
+              className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+              title="❤️"
+            >
+              ❤️
+            </button>
+            <button
+              onClick={() => handleReact('👍')}
+              className="text-xs text-gray-400 hover:text-blue-500 transition-colors"
+              title="👍"
+            >
+              👍
+            </button>
+            <button
+              onClick={() => handleReact('😂')}
+              className="text-xs text-gray-400 hover:text-yellow-500 transition-colors"
+              title="😂"
+            >
+              😂
+            </button>
+            <button
+              onClick={() => handleReact('😮')}
+              className="text-xs text-gray-400 hover:text-purple-500 transition-colors"
+              title="😮"
+            >
+              😮
+            </button>
+            {isOwn && (
+              <button
+                onClick={handleDelete}
+                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+              >
+                <FaTrash size={10} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -226,7 +260,7 @@ const ChatRoom = () => {
   const isMountedRef = useRef(true);
   const loadIntervalRef = useRef(null);
 
-  // Load messages - only when component mounts
+  // Load messages
   const loadMessages = useCallback(async () => {
     if (!isMountedRef.current) return;
     try {
@@ -263,7 +297,6 @@ const ChatRoom = () => {
       loadUsers();
     }
 
-    // Polling every 5 seconds - but only if component is mounted
     loadIntervalRef.current = setInterval(() => {
       if (isMountedRef.current && isAuthenticated) {
         loadMessages();
@@ -278,7 +311,7 @@ const ChatRoom = () => {
     };
   }, [isAuthenticated, loadMessages, loadUsers]);
 
-  // Scroll to bottom only when messages change
+  // Scroll to bottom when messages change
   useEffect(() => {
     if (!loading && messages.length > 0) {
       setTimeout(() => {
@@ -361,17 +394,20 @@ const ChatRoom = () => {
     }
   };
 
-  // ✅ FIXED: handleReaction with proper ID
+  // ✅ FIXED: handleReaction with proper ID and error handling
   const handleReaction = async (messageId, emoji) => {
     if (!messageId) {
-      console.error('Cannot react: messageId is undefined');
+      console.error('❌ Cannot react: messageId is undefined');
+      toast.error('Cannot react to this message');
       return;
     }
     
     try {
+      console.log(`📤 Reacting to message ${messageId} with ${emoji}`);
       await api.reactToMessage(messageId, { emoji });
       // Refresh messages to show updated reactions
       await loadMessages();
+      toast.success(`Reacted with ${emoji}`);
     } catch (error) {
       console.error('Error reacting:', error);
       toast.error('Failed to add reaction');
@@ -381,7 +417,8 @@ const ChatRoom = () => {
   // ✅ FIXED: handleDelete with proper ID
   const handleDeleteMessage = async (messageId) => {
     if (!messageId) {
-      console.error('Cannot delete: messageId is undefined');
+      console.error('❌ Cannot delete: messageId is undefined');
+      toast.error('Cannot delete this message');
       return;
     }
     
@@ -461,16 +498,19 @@ const ChatRoom = () => {
                 <p className="text-sm">Be the first to say hello! 👋</p>
               </div>
             ) : (
-              messages.map((message) => (
-                <ChatMessage
-                  key={getMessageId(message) || `msg-${Date.now()}`}
-                  message={message}
-                  onReply={setReplyTo}
-                  onReact={handleReaction}
-                  onDelete={handleDeleteMessage}
-                  isOwn={isOwnMessage(message)}
-                />
-              ))
+              messages.map((message) => {
+                const msgId = getMessageId(message);
+                return (
+                  <ChatMessage
+                    key={msgId || `msg-${Date.now()}-${Math.random()}`}
+                    message={message}
+                    onReply={setReplyTo}
+                    onReact={handleReaction}
+                    onDelete={handleDeleteMessage}
+                    isOwn={isOwnMessage(message)}
+                  />
+                );
+              })
             )}
             <div ref={messagesEndRef} />
           </div>
