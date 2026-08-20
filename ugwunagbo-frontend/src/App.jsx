@@ -38,6 +38,7 @@ import PlanningDepartment from './pages/departments/PlanningDepartment';
 import SecurityDepartment from './pages/departments/SecurityDepartment';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
+
 function App() {
   return (
     <AuthProvider>

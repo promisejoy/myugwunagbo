@@ -224,6 +224,7 @@ export const api = {
   getLikeCount: (topicId) => apiClient.get(`/api/forum/topics/${topicId}/likes`),
 
   // Chat
+// Chat
 getChatMessages: () => apiClient.get('/api/chat/messages'),
 sendChatMessage: (data) => apiClient.post('/api/chat/messages', data),
 deleteChatMessage: (id) => apiClient.delete(`/api/chat/messages/${id}`),
