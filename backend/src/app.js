@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
+const chatRoutes = require('./routes/chat.routes');
+
+
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
@@ -112,6 +115,7 @@ app.use('/api/gallery', galleryRoutes);
 app.use('/api/leadership-history', leadershipHistoryRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/budgets', budgetRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

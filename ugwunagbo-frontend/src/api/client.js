@@ -187,6 +187,22 @@ export const api = {
       headers: {}
     });
   },
+
+  // Chat with file upload
+sendChatMessageWithFile: (formData) => {
+  console.log('📤 Sending chat message with file...');
+  return apiClient.post('/api/chat/messages-with-file', formData, {
+    headers: {}
+  });
+},
+
+// Forum topic with file upload
+createTopicWithFile: (formData) => {
+  console.log('📤 Creating topic with file...');
+  return apiClient.post('/api/forum/topics-with-file', formData, {
+    headers: {}
+  });
+},
   
   getServicePrices: () => {
     console.log('📤 Fetching service prices...');
@@ -231,6 +247,31 @@ deleteChatMessage: (id) => apiClient.delete(`/api/chat/messages/${id}`),
 reactToMessage: (id, data) => apiClient.post(`/api/chat/messages/${id}/react`, data),
 getOnlineUsers: () => apiClient.get('/api/chat/users/online'),
 updateUserActivity: () => apiClient.post('/api/chat/users/active'),
+
+
+// Chat with file upload
+sendChatMessageWithFile: (formData) => {
+  console.log('📤 Sending chat message with file...');
+  return apiClient.post('/api/chat/messages-with-file', formData, {
+    headers: {}
+  });
+},
+
+// Forum topic with file upload
+createTopicWithFile: (formData) => {
+  console.log('📤 Creating topic with file...');
+  return apiClient.post('/api/forum/topics-with-file', formData, {
+    headers: {}
+  });
+},
+
+// Forum reply with file upload
+addReplyWithFile: (topicId, formData) => {
+  console.log('📤 Adding reply with file...');
+  return apiClient.post(`/api/forum/topics/${topicId}/replies-with-file`, formData, {
+    headers: {}
+  });
+},
 };
 
 
