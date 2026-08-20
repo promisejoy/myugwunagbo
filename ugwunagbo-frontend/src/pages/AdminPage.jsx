@@ -8,7 +8,8 @@ import {
   FaPlus, FaSave, FaTimesCircle, FaCheckCircle, FaSpinner,
   FaUserShield, FaChartLine, FaCalendarAlt, FaPhone, FaMapMarkerAlt,
   FaArrowRight, FaImage, FaVideo, FaFile, FaDownload, FaEye,
-  FaLock, FaUser, FaKey, FaSignOutAlt, FaFilePdf, FaClock
+  FaLock, FaUser, FaKey, FaSignOutAlt, FaFilePdf, FaClock,
+  FaMoneyBillWave
 } from 'react-icons/fa';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
@@ -158,6 +159,76 @@ const AdminPage = () => {
     type: 'danger',
     onConfirm: null
   });
+  
+  // ---------- SERVICE PRICES MANAGEMENT ----------
+  const [servicePrices, setServicePrices] = useState({});
+  const [priceForm, setPriceForm] = useState({
+    service_type: '',
+    amount: '',
+    currency: 'NGN',
+    description: ''
+  });
+  
+  const serviceTypes = [
+    'Birth Certificate',
+    'Marriage Certificate',
+    'Local Government of Origin',
+    'Business Permit',
+    'Building Plan Approval',
+    'Tax Clearance Certificate',
+    'Market Stall Permit',
+    'Social Welfare',
+    'Village Directory',
+    'Other'
+  ];
+
+  // Fetch service prices
+  const loadServicePrices = async () => {
+    try {
+      const response = await api.getServicePrices();
+      if (response.data) {
+        setServicePrices(response.data);
+      }
+    } catch (error) {
+      console.error('Error loading service prices:', error);
+    }
+  };
+
+  // Update service price
+  const handlePriceUpdate = async (e) => {
+    e.preventDefault();
+    if (!priceForm.service_type || !priceForm.amount) {
+      toast.error('Please select a service and enter an amount');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      await api.updateServicePrice(priceForm.service_type, {
+        amount: parseFloat(priceForm.amount),
+        currency: priceForm.currency,
+        description: priceForm.description
+      });
+      toast.success('Service price updated successfully!');
+      setPriceForm({ service_type: '', amount: '', currency: 'NGN', description: '' });
+      await loadServicePrices();
+    } catch (error) {
+      console.error('Error updating service price:', error);
+      toast.error(error.response?.data?.error || 'Failed to update service price');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const editPrice = (serviceType) => {
+    const price = servicePrices[serviceType] || {};
+    setPriceForm({
+      service_type: serviceType,
+      amount: price.amount || '',
+      currency: price.currency || 'NGN',
+      description: price.description || ''
+    });
+  };
 
   const [budgetForm, setBudgetForm] = useState({
     id: '',
@@ -182,6 +253,7 @@ const AdminPage = () => {
   useEffect(() => {
     if (isAuthenticated) {
       loadDashboardData();
+      loadServicePrices();
       if (user) {
         setProfileForm({
           username: user.username || '',
@@ -1001,8 +1073,8 @@ const AdminPage = () => {
     { id: 'ngos', label: 'NGOs & Foundations', icon: FaHandsHelping },
     { id: 'academia', label: 'Academia', icon: FaGraduationCap },
     { id: 'gallery', label: 'Gallery', icon: FaPhotoVideo },
+    { id: 'service-prices', label: 'Service Prices', icon: FaMoneyBillWave },
     { id: 'profile', label: 'Profile Settings', icon: FaUserShield },
-    
   ];
 
   // ======================== RENDER ========================
@@ -1082,7 +1154,13 @@ const AdminPage = () => {
               <p className="text-[#ffcc00]/80 text-sm">Welcome back, {user?.fullName || 'Admin'}!</p>
             </div>
           </div>
-          
+          <button
+            onClick={handleLogout}
+            className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl transition-all duration-300 text-sm"
+          >
+            <FaSignOutAlt />
+            <span>Logout</span>
+          </button>
         </div>
       </div>
 
@@ -2053,7 +2131,7 @@ const AdminPage = () => {
               </div>
             )}
 
-            {/* Applications */}
+            {/* Applications Tab - UPDATED with Authorization File View */}
             {activeTab === 'applications' && (
               <div className="bg-white rounded-2xl p-6 shadow-md">
                 <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
@@ -2066,19 +2144,74 @@ const AdminPage = () => {
                   <div className="space-y-4">
                     {data.applications.map((app) => (
                       <div key={app.id || app._id} className="bg-gray-50 rounded-xl p-4 border border-gray-100 hover:shadow-md transition-shadow">
-                        <div className="flex justify-between items-start">
+                        <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
                           <div className="flex-1">
-                            <p className="font-semibold text-gray-800">{app.name}</p>
-                            <p className="text-sm text-gray-600">{app.email}</p>
-                            {app.phone && <p className="text-sm text-gray-600">{app.phone}</p>}
-                            <p className="text-sm font-medium text-[#006400] mt-1">Service: {app.service_type || 'Other'}</p>
-                            {app.description && <p className="text-sm text-gray-500 mt-1">{app.description}</p>}
-                            <p className="text-xs text-gray-400 mt-2">ID: {app.id || app._id}</p>
-                            <p className="text-xs text-gray-400">{new Date(app.created_at || app.createdAt).toLocaleString()}</p>
+                            <div className="flex items-start justify-between flex-wrap gap-2">
+                              <div>
+                                <p className="font-semibold text-gray-800">{app.name}</p>
+                                <p className="text-sm text-gray-600">{app.email}</p>
+                                {app.phone && <p className="text-sm text-gray-600">{app.phone}</p>}
+                                <p className="text-sm font-medium text-[#006400] mt-1">Service: {app.service_type || 'Other'}</p>
+                                
+                                {/* Traditional Ruler Authorization Info */}
+                                {app.service_type === 'Local Government of Origin' && (
+                                  <div className="mt-2 p-3 bg-[#006400]/10 rounded-lg border border-[#006400]/20">
+                                    <p className="text-sm font-semibold text-[#006400] flex items-center gap-2">
+                                      <FaCrown className="text-[#006400]" />
+                                      Traditional Ruler Authorization
+                                    </p>
+                                    {app.traditional_ruler_name && (
+                                      <p className="text-sm text-gray-700 mt-1">
+                                        <span className="font-medium">Ruler:</span> {app.traditional_ruler_name}
+                                      </p>
+                                    )}
+                                    {app.traditional_ruler_title && (
+                                      <p className="text-sm text-gray-700">
+                                        <span className="font-medium">Title:</span> {app.traditional_ruler_title}
+                                      </p>
+                                    )}
+                                    {app.authorization_file_url && (
+                                      <div className="mt-2 flex items-center gap-2">
+                                        <FaFile className="text-[#006400]" />
+                                        <a
+                                          href={app.authorization_file_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-[#006400] hover:text-[#004d00] underline text-sm font-medium flex items-center gap-1"
+                                        >
+                                          <FaEye className="text-xs" /> View Authorization Letter
+                                        </a>
+                                        <a
+                                          href={app.authorization_file_url}
+                                          download
+                                          className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                                        >
+                                          <FaDownload className="text-xs" /> Download
+                                        </a>
+                                      </div>
+                                    )}
+                                    {!app.authorization_file_url && app.service_type === 'Local Government of Origin' && (
+                                      <p className="text-sm text-red-500 mt-1">⚠️ No authorization file uploaded</p>
+                                    )}
+                                  </div>
+                                )}
+                                
+                                {app.description && (
+                                  <p className="text-sm text-gray-500 mt-1">{app.description}</p>
+                                )}
+                                <p className="text-xs text-gray-400 mt-2">ID: {app.id || app._id}</p>
+                                <p className="text-xs text-gray-400">{new Date(app.created_at || app.createdAt).toLocaleString()}</p>
+                              </div>
+                              <span className={`text-xs px-3 py-1 rounded-full whitespace-nowrap ${
+                                app.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 
+                                app.status === 'approved' ? 'bg-green-100 text-green-700' : 
+                                app.status === 'rejected' ? 'bg-red-100 text-red-700' : 
+                                'bg-gray-100 text-gray-700'
+                              }`}>
+                                {app.status || 'pending'}
+                              </span>
+                            </div>
                           </div>
-                          <span className={`text-xs px-3 py-1 rounded-full ${app.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : app.status === 'approved' ? 'bg-green-100 text-green-700' : app.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
-                            {app.status || 'pending'}
-                          </span>
                         </div>
                       </div>
                     ))}
@@ -2563,7 +2696,106 @@ const AdminPage = () => {
                 </div>
               </div>
             )}
+            
+            {/* Service Prices Tab */}
+            {activeTab === 'service-prices' && (
+              <div>
+                <div className="bg-white rounded-2xl p-6 shadow-md mb-6">
+                  <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+                    <FaMoneyBillWave className="text-[#006400] mr-3" />
+                    Manage Service Prices
+                  </h3>
+                  <form onSubmit={handlePriceUpdate} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Service Type *</label>
+                        <select
+                          value={priceForm.service_type}
+                          onChange={(e) => setPriceForm({ ...priceForm, service_type: e.target.value })}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#006400] focus:border-transparent outline-none transition-all"
+                          required
+                        >
+                          <option value="">Select a service</option>
+                          {serviceTypes.map((service) => (
+                            <option key={service} value={service}>{service}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₦) *</label>
+                        <input
+                          type="number"
+                          value={priceForm.amount}
+                          onChange={(e) => setPriceForm({ ...priceForm, amount: e.target.value })}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#006400] focus:border-transparent outline-none transition-all"
+                          placeholder="e.g., 5000"
+                          required
+                          min="0"
+                          step="100"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                      <input
+                        type="text"
+                        value={priceForm.description}
+                        onChange={(e) => setPriceForm({ ...priceForm, description: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#006400] focus:border-transparent outline-none transition-all"
+                        placeholder="Brief description of what's included"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="bg-[#006400] hover:bg-[#005a00] text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-[#006400]/30 disabled:opacity-50 flex items-center space-x-2"
+                      >
+                        {loading ? <FaSpinner className="animate-spin" /> : <FaSave />}
+                        <span>{loading ? 'Saving...' : 'Update Price'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPriceForm({ service_type: '', amount: '', currency: 'NGN', description: '' })}
+                        className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-xl transition-all duration-300"
+                      >
+                        Reset Form
+                      </button>
+                    </div>
+                  </form>
+                </div>
 
+                <div className="bg-white rounded-2xl p-6 shadow-md">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4">Current Service Prices</h3>
+                  {Object.keys(servicePrices).length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">No service prices set yet</p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {Object.entries(servicePrices).map(([service, price]) => (
+                        <div key={service} className="bg-gray-50 rounded-xl p-4 hover:shadow-md transition-all duration-300 border border-gray-100">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-semibold text-gray-800">{service}</p>
+                              <p className="text-2xl font-bold text-[#006400]">₦{price.amount?.toLocaleString()}</p>
+                              {price.description && (
+                                <p className="text-xs text-gray-500 mt-1">{price.description}</p>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => editPrice(service)}
+                              className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                            >
+                              <FaEdit />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
             {/* Profile Settings */}
             {activeTab === 'profile' && (
               <div className="bg-white rounded-2xl p-6 shadow-md max-w-2xl mx-auto">

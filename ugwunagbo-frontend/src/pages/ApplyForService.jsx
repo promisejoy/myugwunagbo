@@ -10,6 +10,7 @@ const ApplyForService = () => {
   const [submitted, setSubmitted] = useState(false);
   const [applicationId, setApplicationId] = useState('');
   const [servicePrices, setServicePrices] = useState({});
+  const [pricesLoaded, setPricesLoaded] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -22,6 +23,7 @@ const ApplyForService = () => {
     authorization_file_name: ''
   });
   const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedServicePrice, setSelectedServicePrice] = useState(0);
 
   const serviceTypes = [
     'Birth Certificate',
@@ -40,22 +42,53 @@ const ApplyForService = () => {
   useEffect(() => {
     const fetchPrices = async () => {
       try {
+        console.log('🔍 Fetching service prices...');
         const response = await api.getServicePrices();
-        if (response.data) {
+        console.log('✅ Service prices response:', response.data);
+        
+        if (response.data && response.data.data) {
+          setServicePrices(response.data.data);
+          console.log('📊 Prices set:', response.data.data);
+        } else if (response.data) {
           setServicePrices(response.data);
+          console.log('📊 Prices set (direct):', response.data);
         }
+        setPricesLoaded(true);
       } catch (error) {
-        console.error('Error fetching service prices:', error);
+        console.error('❌ Error fetching service prices:', error);
+        // Set default prices if API fails
+        const defaultPrices = {
+          'Birth Certificate': { amount: 5000, currency: 'NGN', description: 'Birth certificate processing' },
+          'Marriage Certificate': { amount: 10000, currency: 'NGN', description: 'Marriage certificate processing' },
+          'Local Government of Origin': { amount: 3000, currency: 'NGN', description: 'LGA origin certificate' },
+          'Business Permit': { amount: 15000, currency: 'NGN', description: 'Business permit processing' },
+          'Building Plan Approval': { amount: 20000, currency: 'NGN', description: 'Building plan approval' },
+          'Tax Clearance Certificate': { amount: 5000, currency: 'NGN', description: 'Tax clearance certificate' },
+          'Market Stall Permit': { amount: 8000, currency: 'NGN', description: 'Market stall permit' },
+          'Social Welfare': { amount: 3000, currency: 'NGN', description: 'Social welfare application' },
+          'Village Directory': { amount: 2000, currency: 'NGN', description: 'Village directory listing' },
+          'Other': { amount: 5000, currency: 'NGN', description: 'Other services' }
+        };
+        setServicePrices(defaultPrices);
+        setPricesLoaded(true);
+        toast.error('Could not load prices. Using default values.');
       }
     };
     fetchPrices();
   }, []);
 
   const handleChange = (e) => {
+    const { name, value } = e.target;
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [name]: value
     });
+    
+    // Update selected price when service type changes
+    if (name === 'service_type') {
+      const price = getServicePrice(value);
+      setSelectedServicePrice(price);
+    }
   };
 
   const handleFileChange = (e) => {
@@ -146,7 +179,7 @@ const ApplyForService = () => {
       const response = await api.submitApplicationWithFile(submitData);
       console.log('Application response:', response.data);
       
-      const appId = response.data?.id || generateApplicationId();
+      const appId = response.data?.id || response.data?.data?.id || generateApplicationId();
       setApplicationId(appId);
       setSubmitted(true);
       toast.success('Application submitted successfully!');
@@ -164,6 +197,7 @@ const ApplyForService = () => {
         authorization_file_name: ''
       });
       setSelectedFile(null);
+      setSelectedServicePrice(0);
     } catch (error) {
       console.error('Error submitting application:', error);
       toast.error(error.response?.data?.error || 'Failed to submit application. Please try again.');
@@ -180,9 +214,44 @@ const ApplyForService = () => {
 
   // Get price for selected service
   const getServicePrice = (serviceType) => {
-    const prices = servicePrices[serviceType] || { amount: 0, currency: 'NGN' };
-    return prices.amount || 0;
+    if (!serviceType) return 0;
+    
+    console.log('🔍 Getting price for:', serviceType);
+    console.log('📊 Available prices:', servicePrices);
+    
+    // Try to get price from servicePrices object
+    let price = 0;
+    
+    if (servicePrices && servicePrices[serviceType]) {
+      price = servicePrices[serviceType].amount || 0;
+    } else {
+      // Default prices if not found
+      const defaultPrices = {
+        'Birth Certificate': 5000,
+        'Marriage Certificate': 10000,
+        'Local Government of Origin': 3000,
+        'Business Permit': 15000,
+        'Building Plan Approval': 20000,
+        'Tax Clearance Certificate': 5000,
+        'Market Stall Permit': 8000,
+        'Social Welfare': 3000,
+        'Village Directory': 2000,
+        'Other': 5000
+      };
+      price = defaultPrices[serviceType] || 0;
+    }
+    
+    console.log('💰 Price for', serviceType, ':', price);
+    return price;
   };
+
+  // Update price when service type changes in dropdown
+  useEffect(() => {
+    if (formData.service_type) {
+      const price = getServicePrice(formData.service_type);
+      setSelectedServicePrice(price);
+    }
+  }, [formData.service_type, servicePrices]);
 
   if (submitted) {
     return (
@@ -208,7 +277,7 @@ const ApplyForService = () => {
               <li>• Bank: First Bank of Nigeria</li>
               <li>• Account: Ugwunagbo Local Government</li>
               <li>• Account Number: 3112345678</li>
-              <li>• Amount: ₦{getServicePrice(formData.service_type).toLocaleString()}</li>
+              <li>• Amount: ₦{selectedServicePrice.toLocaleString()}</li>
               <li>• Reference: Use your Application ID above</li>
             </ul>
           </div>
@@ -311,16 +380,21 @@ const ApplyForService = () => {
                 required
               >
                 <option value="">Select a service</option>
-                {serviceTypes.map((service) => (
-                  <option key={service} value={service}>
-                    {service} {servicePrice > 0 ? `(₦${servicePrice.toLocaleString()})` : ''}
-                  </option>
-                ))}
+                {serviceTypes.map((service) => {
+                  const price = getServicePrice(service);
+                  return (
+                    <option key={service} value={service}>
+                      {service} {price > 0 ? `(₦${price.toLocaleString()})` : ''}
+                    </option>
+                  );
+                })}
               </select>
               {servicePrice > 0 && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Service fee: ₦{servicePrice.toLocaleString()}
-                </p>
+                <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="text-sm text-green-700">
+                    <span className="font-semibold">Service Fee:</span> ₦{servicePrice.toLocaleString()}
+                  </p>
+                </div>
               )}
             </div>
 

@@ -192,10 +192,11 @@ export const api = {
   },
   
   // ✅ NEW: Get service prices
-  getServicePrices: () => {
-    console.log('📤 Fetching service prices...');
-    return apiClient.get('/api/service-applications/prices');
-  },
+ // In src/api/client.js
+getServicePrices: () => {
+  console.log('📤 Fetching service prices...');
+  return apiClient.get('/api/service-applications/prices');
+},
   
   // ✅ NEW: Update service price (Admin only)
   updateServicePrice: (serviceType, data) => {
