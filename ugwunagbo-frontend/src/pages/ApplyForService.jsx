@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaUser, FaEnvelope, FaPhone, FaFileAlt, FaClipboardList, FaSpinner, FaCheckCircle, FaPaperPlane, FaUpload, FaFile, FaTrash } from 'react-icons/fa';
 import { api } from '../api/client';
@@ -10,7 +10,6 @@ const ApplyForService = () => {
   const [submitted, setSubmitted] = useState(false);
   const [applicationId, setApplicationId] = useState('');
   const [servicePrices, setServicePrices] = useState({});
-  const [pricesLoaded, setPricesLoaded] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -24,6 +23,7 @@ const ApplyForService = () => {
   });
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedServicePrice, setSelectedServicePrice] = useState(0);
+  const [submittedServiceType, setSubmittedServiceType] = useState('');
 
   const serviceTypes = [
     'Birth Certificate',
@@ -34,7 +34,6 @@ const ApplyForService = () => {
     'Tax Clearance Certificate',
     'Market Stall Permit',
     'Social Welfare',
-    'Village Directory',
     'Other'
   ];
 
@@ -49,7 +48,6 @@ const ApplyForService = () => {
       'Tax Clearance Certificate': { amount: 5000, currency: 'NGN', description: 'Tax clearance certificate' },
       'Market Stall Permit': { amount: 8000, currency: 'NGN', description: 'Market stall permit' },
       'Social Welfare': { amount: 3000, currency: 'NGN', description: 'Social welfare application' },
-      'Village Directory': { amount: 2000, currency: 'NGN', description: 'Village directory listing' },
       'Other': { amount: 5000, currency: 'NGN', description: 'Other services' }
     };
   };
@@ -62,29 +60,19 @@ const ApplyForService = () => {
         const response = await api.getServicePrices();
         console.log('✅ Service prices response:', response.data);
         
-        // Check if we got valid data
         if (response.data && response.data.data) {
           setServicePrices(response.data.data);
           console.log('📊 Prices set from response.data.data:', response.data.data);
         } else if (response.data && typeof response.data === 'object' && !response.data.error) {
-          // If the data is directly the prices object
           setServicePrices(response.data);
           console.log('📊 Prices set from response.data:', response.data);
         } else {
-          // If no valid data, use defaults
           console.warn('⚠️ No valid price data received, using defaults');
           setServicePrices(getDefaultPrices());
         }
-        setPricesLoaded(true);
       } catch (error) {
         console.error('❌ Error fetching service prices:', error);
-        // Only show toast for network errors
-        if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
-          toast.error('Could not load prices. Please check your connection.');
-        }
-        // Always set default prices as fallback
         setServicePrices(getDefaultPrices());
-        setPricesLoaded(true);
       }
     };
     fetchPrices();
@@ -107,14 +95,12 @@ const ApplyForService = () => {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         toast.error('File size must be less than 5MB');
         e.target.value = '';
         return;
       }
       
-      // Validate file type
       const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
       if (!allowedTypes.includes(file.type)) {
         toast.error('Please upload a JPEG, PNG, or PDF file');
@@ -150,7 +136,6 @@ const ApplyForService = () => {
       return;
     }
 
-    // If Local Government of Origin, validate traditional ruler fields
     if (formData.service_type === 'Local Government of Origin') {
       if (!formData.traditional_ruler_name) {
         toast.error('Please provide the Traditional Ruler\'s name');
@@ -166,16 +151,21 @@ const ApplyForService = () => {
       }
     }
 
-    // Validate email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
       toast.error('Please enter a valid email address');
       return;
     }
 
+    // ✅ Store the service type and price before submitting
+    setSubmittedServiceType(formData.service_type);
+    
+    // ✅ Get the final price for the selected service
+    const finalPrice = getServicePrice(formData.service_type);
+    setSelectedServicePrice(finalPrice);
+
     setSubmitting(true);
     try {
-      // Create FormData for file upload
       const submitData = new FormData();
       submitData.append('name', formData.name);
       submitData.append('email', formData.email);
@@ -184,6 +174,7 @@ const ApplyForService = () => {
       submitData.append('description', formData.description || '');
       submitData.append('traditional_ruler_name', formData.traditional_ruler_name || '');
       submitData.append('traditional_ruler_title', formData.traditional_ruler_title || '');
+      submitData.append('service_price', finalPrice); // ✅ Send price to backend
       
       if (formData.authorization_file) {
         submitData.append('authorization_file', formData.authorization_file);
@@ -197,7 +188,6 @@ const ApplyForService = () => {
       setSubmitted(true);
       toast.success('Application submitted successfully!');
       
-      // Reset form
       setFormData({
         name: '',
         email: '',
@@ -210,7 +200,6 @@ const ApplyForService = () => {
         authorization_file_name: ''
       });
       setSelectedFile(null);
-      setSelectedServicePrice(0);
     } catch (error) {
       console.error('Error submitting application:', error);
       toast.error(error.response?.data?.error || 'Failed to submit application. Please try again.');
@@ -225,17 +214,13 @@ const ApplyForService = () => {
     return `UGW-${timestamp}-${random}`.toUpperCase();
   };
 
-  // Get price for selected service
   const getServicePrice = (serviceType) => {
     if (!serviceType) return 0;
     
-    // Try to get price from servicePrices object
     let price = 0;
-    
     if (servicePrices && servicePrices[serviceType]) {
       price = servicePrices[serviceType].amount || 0;
     } else {
-      // Default prices if not found
       const defaultPrices = {
         'Birth Certificate': 5000,
         'Marriage Certificate': 10000,
@@ -250,7 +235,6 @@ const ApplyForService = () => {
       };
       price = defaultPrices[serviceType] || 0;
     }
-    
     return price;
   };
 
@@ -263,6 +247,9 @@ const ApplyForService = () => {
   }, [formData.service_type, servicePrices]);
 
   if (submitted) {
+    // ✅ Use the stored price for display
+    const displayPrice = selectedServicePrice || getServicePrice(submittedServiceType);
+    
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 text-center">
@@ -286,7 +273,7 @@ const ApplyForService = () => {
               <li>• Bank: First Bank of Nigeria</li>
               <li>• Account: Ugwunagbo Local Government</li>
               <li>• Account Number: 3112345678</li>
-              <li>• Amount: ₦{selectedServicePrice.toLocaleString()}</li>
+              <li>• <span className="font-bold">Amount: ₦{displayPrice.toLocaleString()}</span></li>
               <li>• Reference: Use your Application ID above</li>
             </ul>
           </div>
@@ -316,7 +303,6 @@ const ApplyForService = () => {
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="container-custom max-w-2xl">
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-          {/* Header */}
           <div className="bg-gradient-to-r from-[#006400] to-[#008000] p-6 text-white">
             <h1 className="text-2xl font-bold flex items-center">
               <FaClipboardList className="mr-3" />
@@ -327,7 +313,6 @@ const ApplyForService = () => {
             </p>
           </div>
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -407,7 +392,6 @@ const ApplyForService = () => {
               )}
             </div>
 
-            {/* Traditional Ruler Authorization - Only for LGA */}
             {isLGA && (
               <div className="border border-[#006400] rounded-xl p-4 bg-gray-50">
                 <h4 className="font-semibold text-[#006400] mb-3 flex items-center">

@@ -11,26 +11,30 @@ const apiClient = axios.create({
   },
 });
 
-// Request interceptor - handle FormData
+// ============================================
+// REQUEST INTERCEPTOR
+// ============================================
 apiClient.interceptors.request.use(
   (config) => {
+    // 1. Attach Auth Token if available
     const token = localStorage.getItem('authToken');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    
-    // If FormData, remove Content-Type header to let browser set it with boundary
+
+    // 2. Automatically handle FormData header overrides
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];
     }
-    
-    console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`);
+
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Response interceptor
+// ============================================
+// RESPONSE INTERCEPTOR
+// ============================================
 apiClient.interceptors.response.use(
   (response) => {
     console.log(`✅ ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
@@ -38,15 +42,25 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     console.error('❌ API Error:', error.response?.status, error.response?.data);
+    
+    // Auto-logout on 401 Unauthorized, except for non-fatal/chat endpoints
     if (error.response?.status === 401) {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('user');
-      window.location.href = '/';
+      const url = error.config?.url || '';
+      const isChatEndpoint = url.includes('/api/chat/');
+      
+      if (!isChatEndpoint) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        window.location.href = '/';
+      }
     }
     return Promise.reject(error);
   }
 );
 
+// ============================================
+// API CLIENT METHODS
+// ============================================
 export const api = {
   // Auth
   login: (username, password) => 
@@ -63,24 +77,12 @@ export const api = {
   
   // Governor
   getGovernor: () => apiClient.get('/api/governor'),
-  updateGovernor: (data) => {
-    return apiClient.put('/api/governor', data, {
-      headers: {}
-    });
-  },
+  updateGovernor: (data) => apiClient.put('/api/governor', data),
   
   // Leaders
   getLeaders: () => apiClient.get('/api/leaders'),
-  addLeader: (data) => {
-    return apiClient.post('/api/leaders', data, {
-      headers: {}
-    });
-  },
-  updateLeader: (id, data) => {
-    return apiClient.put(`/api/leaders/${id}`, data, {
-      headers: {}
-    });
-  },
+  addLeader: (data) => apiClient.post('/api/leaders', data),
+  updateLeader: (id, data) => apiClient.put(`/api/leaders/${id}`, data),
   deleteLeader: (id) => apiClient.delete(`/api/leaders/${id}`),
   
   // Villages
@@ -90,114 +92,50 @@ export const api = {
   
   // News
   getNews: () => apiClient.get('/api/news'),
-  addNews: (data) => {
-    return apiClient.post('/api/news', data, {
-      headers: {}
-    });
-  },
-  updateNews: (id, data) => {
-    return apiClient.put(`/api/news/${id}`, data, {
-      headers: {}
-    });
-  },
+  addNews: (data) => apiClient.post('/api/news', data),
+  updateNews: (id, data) => apiClient.put(`/api/news/${id}`, data),
   deleteNews: (id) => apiClient.delete(`/api/news/${id}`),
   
   // Traditional Rulers
   getTraditionalRulers: () => apiClient.get('/api/traditional-rulers'),
-  addTraditionalRuler: (data) => {
-    return apiClient.post('/api/traditional-rulers', data, {
-      headers: {}
-    });
-  },
-  updateTraditionalRuler: (id, data) => {
-    return apiClient.put(`/api/traditional-rulers/${id}`, data, {
-      headers: {}
-    });
-  },
+  addTraditionalRuler: (data) => apiClient.post('/api/traditional-rulers', data),
+  updateTraditionalRuler: (id, data) => apiClient.put(`/api/traditional-rulers/${id}`, data),
   deleteTraditionalRuler: (id) => apiClient.delete(`/api/traditional-rulers/${id}`),
   
   // NGOs
   getNGOs: () => apiClient.get('/api/ngos-foundations'),
-  addNGO: (data) => {
-    return apiClient.post('/api/ngos-foundations', data, {
-      headers: {}
-    });
-  },
-  updateNGO: (id, data) => {
-    return apiClient.put(`/api/ngos-foundations/${id}`, data, {
-      headers: {}
-    });
-  },
+  addNGO: (data) => apiClient.post('/api/ngos-foundations', data),
+  updateNGO: (id, data) => apiClient.put(`/api/ngos-foundations/${id}`, data),
   deleteNGO: (id) => apiClient.delete(`/api/ngos-foundations/${id}`),
   
   // Academia
   getAcademia: () => apiClient.get('/api/academia'),
-  addAcademician: (data) => {
-    return apiClient.post('/api/academia', data, {
-      headers: {}
-    });
-  },
-  updateAcademician: (id, data) => {
-    return apiClient.put(`/api/academia/${id}`, data, {
-      headers: {}
-    });
-  },
+  addAcademician: (data) => apiClient.post('/api/academia', data),
+  updateAcademician: (id, data) => apiClient.put(`/api/academia/${id}`, data),
   deleteAcademician: (id) => apiClient.delete(`/api/academia/${id}`),
   
   // Gallery
   getGallery: () => apiClient.get('/api/gallery'),
-  addGalleryItem: (data) => {
-    return apiClient.post('/api/gallery', data, {
-      headers: {}
-    });
-  },
-  updateGalleryItem: (id, data) => {
-    return apiClient.put(`/api/gallery/${id}`, data, {
-      headers: {}
-    });
-  },
+  addGalleryItem: (data) => apiClient.post('/api/gallery', data),
+  updateGalleryItem: (id, data) => apiClient.put(`/api/gallery/${id}`, data),
   deleteGalleryItem: (id) => apiClient.delete(`/api/gallery/${id}`),
   
   // Budgets
   getBudgets: () => apiClient.get('/api/budgets'),
-  uploadBudget: (data) => {
-    return apiClient.post('/api/budgets', data, {
-      headers: {}
-    });
-  },
+  uploadBudget: (data) => apiClient.post('/api/budgets', data),
   deleteBudget: (id) => apiClient.delete(`/api/budgets/${id}`),
   
   // Contacts
   getContacts: () => apiClient.get('/api/contacts'),
-  submitContact: (data) => {
-    console.log('📤 Submitting contact data:', data);
-    return apiClient.post('/api/contacts', data);
-  },
+  submitContact: (data) => apiClient.post('/api/contacts', data),
   
   // Service Applications
   getApplications: () => apiClient.get('/api/service-applications'),
-  submitApplication: (data) => {
-    console.log('📤 Submitting application data:', data);
-    return apiClient.post('/api/service-applications', data);
-  },
-  
-  submitApplicationWithFile: (formData) => {
-    console.log('📤 Submitting application with file...');
-    return apiClient.post('/api/service-applications/apply-with-file', formData, {
-      headers: {}
-    });
-  },
-  
-  getServicePrices: () => {
-    console.log('📤 Fetching service prices...');
-    return apiClient.get('/api/service-applications/prices');
-  },
-  
-  updateServicePrice: (serviceType, data) => {
-    console.log(`📤 Updating price for ${serviceType}:`, data);
-    return apiClient.put(`/api/service-applications/prices/${encodeURIComponent(serviceType)}`, data);
-  },
-  
+  submitApplication: (data) => apiClient.post('/api/service-applications', data),
+  submitApplicationWithFile: (formData) => apiClient.post('/api/service-applications/apply-with-file', formData),
+  getServicePrices: () => apiClient.get('/api/service-applications/prices'),
+  updateServicePrice: (serviceType, data) => 
+    apiClient.put(`/api/service-applications/prices/${encodeURIComponent(serviceType)}`, data),
   updateApplicationStatus: (id, status) => 
     apiClient.put(`/api/service-applications/${id}/status`, { status }),
   deleteApplication: (id) => apiClient.delete(`/api/service-applications/${id}`),
@@ -222,36 +160,15 @@ export const api = {
   likeTopic: (topicId) => apiClient.post(`/api/forum/topics/${topicId}/like`),
   getLikeStatus: (topicId) => apiClient.get(`/api/forum/topics/${topicId}/like-status`),
   getLikeCount: (topicId) => apiClient.get(`/api/forum/topics/${topicId}/likes`),
-  
-  // Forum with file upload
-  createTopicWithFile: (formData) => {
-    console.log('📤 Creating topic with file...');
-    return apiClient.post('/api/forum/topics-with-file', formData, {
-      headers: {}
-    });
-  },
-  
-  addReplyWithFile: (topicId, formData) => {
-    console.log('📤 Adding reply with file...');
-    return apiClient.post(`/api/forum/topics/${topicId}/replies-with-file`, formData, {
-      headers: {}
-    });
-  },
+  createTopicWithFile: (formData) => apiClient.post('/api/forum/topics-with-file', formData),
+  addReplyWithFile: (topicId, formData) => apiClient.post(`/api/forum/topics/${topicId}/replies-with-file`, formData),
 
   // Chat
   getChatMessages: () => apiClient.get('/api/chat/messages'),
   sendChatMessage: (data) => apiClient.post('/api/chat/messages', data),
-  sendChatMessageWithFile: (formData) => {
-    console.log('📤 Sending chat message with file...');
-    return apiClient.post('/api/chat/messages-with-file', formData, {
-      headers: {}
-    });
-  },
+  sendChatMessageWithFile: (formData) => apiClient.post('/api/chat/messages-with-file', formData),
   deleteChatMessage: (id) => apiClient.delete(`/api/chat/messages/${id}`),
-  reactToMessage: (id, data) => {
-    console.log(`📤 Reacting to message ${id}:`, data);
-    return apiClient.post(`/api/chat/messages/${id}/react`, data);
-  },
+ reactToMessage: (id, emoji) => apiClient.post(`/api/chat/messages/${id}/react`, { emoji }),
   getOnlineUsers: () => apiClient.get('/api/chat/users/online'),
   updateUserActivity: () => apiClient.post('/api/chat/users/active'),
 };

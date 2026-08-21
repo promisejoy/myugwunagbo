@@ -1,43 +1,57 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
 
-const protect = async (req, res, next) => {
-  let token;
-
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
-  }
-
-  if (!token) {
-    console.log('❌ No token provided');
-    return res.status(401).json({ error: 'Not authorized, no token' });
-  }
-
+const authMiddleware = async (req, res, next) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'ugwunagbo_super_secret_key_2024');
-    req.user = await User.findById(decoded.id).select('-password');
-    
-    if (!req.user) {
-      console.log('❌ User not found');
-      return res.status(401).json({ error: 'Not authorized, user not found' });
+    const JWT_SECRET = process.env.JWT_SECRET;
+
+    if (!JWT_SECRET) {
+      console.error('❌ JWT_SECRET is not configured in environment variables');
+      return res.status(500).json({ error: 'Internal server error: auth configuration missing' });
     }
 
-    console.log('✅ User authenticated:', req.user.username);
+    // Extract Bearer token from Authorization header
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Access denied. No token provided' });
+    }
+
+    const token = authHeader.split(' ')[1]?.trim();
+    if (!token) {
+      return res.status(401).json({ error: 'Access denied. Token is malformed' });
+    }
+
+    // Verify token payload
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Normalize user object across different JWT standard payload structures (e.g. id, sub)
+    const userId = decoded.id || decoded.sub || decoded.user_id;
+
+    if (!userId) {
+      console.error('❌ Invalid token payload structure:', decoded);
+      return res.status(401).json({ error: 'Invalid token payload' });
+    }
+
+    // Attach user payload to request object
+    req.user = {
+      id: userId,
+      username: decoded.username || decoded.email || null,
+      role: decoded.role || 'user',
+      ...decoded
+    };
+
     next();
   } catch (error) {
-    console.error('❌ Auth error:', error.message);
-    return res.status(401).json({ error: 'Not authorized, token failed' });
+    if (error instanceof jwt.TokenExpiredError) {
+      return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+    }
+    
+    if (error instanceof jwt.JsonWebTokenError) {
+      return res.status(401).json({ error: 'Invalid token signature or payload', code: 'INVALID_TOKEN' });
+    }
+
+    console.error('❌ Auth Middleware Error:', error.message);
+    return res.status(401).json({ error: 'Authentication failed' });
   }
 };
 
-const admin = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
-    console.log('✅ Admin authorized:', req.user.username);
-    next();
-  } else {
-    console.log('❌ Not admin user');
-    res.status(403).json({ error: 'Not authorized as admin' });
-  }
-};
-
-module.exports = { protect, admin };
+module.exports = authMiddleware;

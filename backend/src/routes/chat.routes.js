@@ -4,6 +4,7 @@ const { createClient } = require('@supabase/supabase-js');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const authMiddleware = require('../middleware/auth');
 
 // Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -49,9 +50,12 @@ const chatFileFilter = (req, file, cb) => {
 
 const chatUpload = multer({ 
   storage: chatStorage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: chatFileFilter
 });
+
+// Apply Auth Middleware to all routes
+router.use(authMiddleware);
 
 // ============================================
 // GET ALL CHAT MESSAGES
@@ -64,13 +68,18 @@ router.get('/messages', async (req, res) => {
       .from('chat_messages')
       .select(`
         *,
-        user:users(id, username, full_name)
+        user:users(id, username, full_name),
+        reactions:message_reactions(
+          id,
+          emoji,
+          user_id,
+          user:users(id, username)
+        )
       `)
       .order('created_at', { ascending: true })
       .limit(100);
 
     if (error) {
-      // If table doesn't exist, return empty array
       if (error.message && error.message.includes('does not exist')) {
         console.log('ℹ️  chat_messages table does not exist yet');
         return res.json([]);
@@ -188,7 +197,7 @@ router.delete('/messages/:id', async (req, res) => {
     const { id } = req.params;
     const userId = req.user?.id;
 
-    // First, get the message to check if it has a file
+    // Fetch message to clear attached local file if present
     const { data: message, error: fetchError } = await supabase
       .from('chat_messages')
       .select('file_url')
@@ -200,7 +209,6 @@ router.delete('/messages/:id', async (req, res) => {
       return res.status(500).json({ error: fetchError.message });
     }
 
-    // Delete the file if it exists
     if (message?.file_url) {
       const fileName = message.file_url.replace('/uploads/chat/', '');
       const filePath = path.join(chatUploadDir, fileName);
@@ -230,7 +238,7 @@ router.delete('/messages/:id', async (req, res) => {
 });
 
 // ============================================
-// REACT TO A MESSAGE
+// REACT TO A MESSAGE - FIXED
 // ============================================
 router.post('/messages/:id/react', async (req, res) => {
   try {
@@ -238,55 +246,96 @@ router.post('/messages/:id/react', async (req, res) => {
     const { emoji } = req.body;
     const userId = req.user?.id;
 
+    console.log(`📤 Reacting to message ${id} with ${emoji} from user ${userId}`);
+
     if (!emoji) {
       return res.status(400).json({ error: 'Emoji is required' });
     }
 
-    // Check if user already reacted
-    const { data: existing, error: checkError } = await supabase
-      .from('message_reactions')
-      .select('*')
-      .eq('message_id', id)
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (checkError && checkError.code !== 'PGRST116') {
-      throw checkError;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
     }
 
-    let result;
+    // Check if message exists
+    const { data: message, error: messageError } = await supabase
+      .from('chat_messages')
+      .select('id')
+      .eq('id', id)
+      .single();
+
+    if (messageError) {
+      console.error('❌ Message not found:', messageError);
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    // Check if user already reacted with this specific emoji
+    const { data: existing } = await supabase
+      .from('message_reactions')
+      .select('id, emoji')
+      .eq('message_id', id)
+      .eq('user_id', userId)
+      .eq('emoji', emoji)
+      .maybeSingle();
+
+    let action;
+
     if (existing) {
-      // Update existing reaction
-      const { data, error } = await supabase
+      // Toggle reaction off
+      const { error: deleteError } = await supabase
         .from('message_reactions')
-        .update({ emoji, updated_at: new Date().toISOString() })
-        .eq('id', existing.id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      result = data;
+        .delete()
+        .eq('id', existing.id);
+
+      if (deleteError) {
+        console.error('❌ Error deleting reaction:', deleteError);
+        return res.status(500).json({ error: deleteError.message });
+      }
+      action = 'removed';
     } else {
-      // Create new reaction
-      const { data, error } = await supabase
+      // Add reaction
+      const { error: insertError } = await supabase
         .from('message_reactions')
         .insert({
           message_id: id,
           user_id: userId,
-          emoji,
+          emoji: emoji,
           created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      result = data;
+        });
+
+      if (insertError) {
+        console.error('❌ Error inserting reaction:', insertError);
+        return res.status(500).json({ error: insertError.message });
+      }
+      action = 'added';
     }
 
-    res.json(result);
+    // Fetch and return full updated list of reactions for this message
+    const { data: updatedReactions, error: reactionsError } = await supabase
+      .from('message_reactions')
+      .select(`
+        id,
+        emoji,
+        user_id,
+        user:users(id, username)
+      `)
+      .eq('message_id', id);
+
+    if (reactionsError) {
+      console.error('❌ Error fetching updated reactions:', reactionsError);
+      return res.status(500).json({ error: reactionsError.message });
+    }
+
+    console.log(`✅ Reaction ${action} successfully`);
+    res.json({
+      success: true,
+      action,
+      messageId: id,
+      reactions: updatedReactions || []
+    });
+
   } catch (error) {
     console.error('❌ Error reacting to message:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message || 'Failed to react to message' });
   }
 });
 
