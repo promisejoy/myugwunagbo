@@ -99,6 +99,29 @@ app.get('/', (req, res) => {
   });
 });
 
+
+
+// ============================================
+// Check if we're in production environment
+if (process.env.NODE_ENV === 'production') {
+  // Serve static files from the React build folder
+  // Adjust the path to where your React build files are located
+  const buildPath = path.join(__dirname, '../client/build'); // or wherever your build is
+  
+  // Serve static assets
+  app.use(express.static(buildPath));
+  
+  // Catch-all route to serve index.html for any non-API request
+  app.get('*', (req, res) => {
+    // Skip API routes - they should have been handled already
+    if (req.path.startsWith('/api/') || req.path === '/api' || req.path === '/') {
+      return res.status(404).json({ error: 'API endpoint not found' });
+    }
+    res.sendFile(path.join(buildPath, 'index.html'));
+  });
+}
+
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/governor', governorRoutes);
@@ -135,7 +158,33 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
+// ============================================
+// SERVE REACT APP FOR NON-API ROUTES
+// ============================================
+// This must come AFTER your API routes but BEFORE the 404 handler
+
+// Get the path to the React build directory
+// Adjust this path based on your actual build location
+const reactBuildPath = path.join(__dirname, '../../client/build'); // Adjust as needed
+
+// Check if build exists (production only)
+const fs = require('fs');
+if (fs.existsSync(reactBuildPath) && process.env.NODE_ENV === 'production') {
+  // Serve static files
+  app.use(express.static(reactBuildPath));
+  
+  // Catch-all for React routes
+  app.get('*', (req, res, next) => {
+    // Skip API routes (should have been handled already)
+    if (req.path.startsWith('/api/') || req.path === '/api') {
+      return next(); // Pass to 404 handler
+    }
+    // Send index.html for all other routes
+    res.sendFile(path.join(reactBuildPath, 'index.html'));
+  });
+}
+
+// Then your existing 404 handler
 app.use((req, res) => {
   res.status(404).json({ 
     error: `Route not found: ${req.method} ${req.url}`

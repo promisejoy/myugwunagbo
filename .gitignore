@@ -1,2 +1,146 @@
+# ============================================
+# Vercel
+# ============================================
 .vercel
-.env*
+.vercel-output
+
+# ============================================
+# Environment Variables
+# ============================================
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# ============================================
+# Node.js / Dependencies
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ============================================
+# Build Outputs
+# ============================================
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# ============================================
+# React / Vite
+# ============================================
+# Vite
+.vite/
+vite.config.js.timestamp-*
+
+# React
+*.log
+coverage/
+.nyc_output/
+.eslintcache
+*.tsbuildinfo
+
+# ============================================
+# Backend (Express)
+# ============================================
+# Uploads directory (if you don't want to commit user uploads)
+uploads/
+temp/
+
+# Database files
+*.sqlite
+*.db
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# ============================================
+# IDE / Editor
+# ============================================
+# VS Code
+.vscode/
+*.code-workspace
+.vscode-test/
+
+# IntelliJ / WebStorm
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# ============================================
+# OS Files
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# ============================================
+# Docker
+# ============================================
+docker-compose.override.yml
+*.dockerignore
+
+# ============================================
+# Testing
+# ============================================
+coverage/
+.nyc_output/
+test-results/
+jest-results.json
+
+# ============================================
+# Misc
+# ============================================
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+
+# Backup files
+*.bak
+*.tmp
+*.temp
+
+# ============================================
+# Project Specific
+# ============================================
+# Supabase
+.supabase/
+
+# Backup of important files
+*.backup
+
+# Temporary files
+tmp/
+temp/
+*.swp
+
+# Ignore build artifacts
+.DS_Store
+*.log
