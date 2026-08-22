@@ -2,22 +2,22 @@
   "version": 2,
   "builds": [
     {
-      "src": "dist/**",
+      "src": "ugwunagbo-frontend/dist/**",
       "use": "@vercel/static"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": " https://ugwunagbo-backend.onrender.com"
+      "dest": "https://ugwunagbo-backend.onrender.com/api/$1"
     },
     {
       "src": "/(.*)\\.(.*)",
-      "dest": "/dist/$1.$2"
+      "dest": "/ugwunagbo-frontend/dist/$1.$2"
     },
     {
       "src": "/(.*)",
-      "dest": "/dist/index.html"
+      "dest": "/ugwunagbo-frontend/dist/index.html"
     }
   ]
 }

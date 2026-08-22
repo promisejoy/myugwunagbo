@@ -144,3 +144,4 @@ temp/
 # Ignore build artifacts
 .DS_Store
 *.log
+.env*
