@@ -164,41 +164,15 @@ export const api = {
   addReplyWithFile: (topicId, formData) => apiClient.post(`/api/forum/topics/${topicId}/replies-with-file`, formData),
 
   // Chat
-  // ============================================
-// CHAT
-// ============================================
-getChatMessages: () =>
-  apiClient.get('/api/chat/messages'),
-
-sendChatMessage: (data) =>
-  apiClient.post('/api/chat/messages', data),
-
-sendChatMessageWithFile: (formData) =>
-  apiClient.post('/api/chat/messages-with-file', formData),
-
-deleteChatMessage: (id) =>
-  apiClient.delete(`/api/chat/messages/${id}`),
-
-reactToMessage: (id, emoji) =>
-  apiClient.post(`/api/chat/messages/${id}/react`, { emoji }),
-
-getOnlineUsers: () =>
-  apiClient.get('/api/chat/users/online'),
-
-updateUserActivity: () =>
-  apiClient.post('/api/chat/users/active'),
-
-// ============================================
-// CHAT READ STATE
-// ============================================
-getChatReadState: () =>
-  apiClient.get('/api/chat/read-state'),
-
-saveChatReadState: (messageId, readAt) =>
-  apiClient.post('/api/chat/read-state', {
-    messageId,
-    readAt
-}),
+  getChatMessages: () => apiClient.get('/api/chat/messages'),
+  sendChatMessage: (data) => apiClient.post('/api/chat/messages', data),
+  sendChatMessageWithFile: (formData) => apiClient.post('/api/chat/messages-with-file', formData),
+  deleteChatMessage: (id) => apiClient.delete(`/api/chat/messages/${id}`),
+ reactToMessage: (id, emoji) => apiClient.post(`/api/chat/messages/${id}/react`, { emoji }),
+  getChatReadState: () => apiClient.get('/api/chat/read-state'),
+  saveChatReadState: (messageId, createdAt) =>
+    apiClient.post('/api/chat/read-state', { messageId, createdAt }),
+  updateUserActivity: () => apiClient.post('/api/chat/users/active'),
 };
 
 export default apiClient;

@@ -17,6 +17,13 @@ import toast from 'react-hot-toast';
 
 const AdminPage = () => {
   const { user, login, isAuthenticated, updateUser, logout } = useAuth();
+
+  // Only administrator accounts are allowed into the dashboard.
+  const isAdmin =
+    user?.role === 'admin' ||
+    user?.role === 'administrator' ||
+    user?.is_admin === true ||
+    user?.isAdmin === true;
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(false);
@@ -256,7 +263,7 @@ const AdminPage = () => {
   const galleryFileInputRef = useRef(null);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && isAdmin) {
       loadDashboardData();
       loadServicePrices();
       if (user) {
@@ -269,7 +276,7 @@ const AdminPage = () => {
         });
       }
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, isAdmin, user]);
 
   // ---------- LOGIN ----------
   const handleLoginSubmit = async (e) => {
@@ -294,7 +301,7 @@ const AdminPage = () => {
 
   // ---------- LOAD DATA ----------
   const loadDashboardData = async () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isAdmin) return;
     setLoading(true);
     try {
       const [
@@ -1083,6 +1090,37 @@ const AdminPage = () => {
   ];
 
   // ======================== RENDER ========================
+  if (isAuthenticated && !isAdmin) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-xl">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+            <FaLock className="text-2xl text-red-600" />
+          </div>
+
+          <h2 className="text-2xl font-bold text-gray-900">
+            Access Denied
+          </h2>
+
+          <p className="mt-3 text-gray-600">
+            This dashboard is restricted to administrators only.
+          </p>
+
+          <button
+            type="button"
+            onClick={() => {
+              logout();
+              navigate('/');
+            }}
+            className="mt-6 w-full rounded-xl bg-[#006400] px-5 py-3 font-semibold text-white transition hover:bg-[#005000]"
+          >
+            Return to Website
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
@@ -1156,16 +1194,15 @@ const AdminPage = () => {
             </div>
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#006400]">Ugwunagbo LGA</p>
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 truncate">Dashboard</h2>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 truncate">Administration Centre</h2>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => navigate('/')}
-              className=" sm:flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:border-[#006400] hover:text-[#006400] transition-all"
+              className="hidden sm:flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:border-[#006400] hover:text-[#006400] transition-all"
             >
-              <FaHome />
-              <span className="hidden sm:inline">Home</span>
+              <FaHome /> View site
             </button>
             <button
               onClick={handleLogout}

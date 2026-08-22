@@ -3,15 +3,13 @@ const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const authMiddleware = require('../middleware/auth');
 
-// Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('❌ Missing Supabase environment variables in chat.routes.js');
+  console.error('❌ Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in chat.routes.js');
 }
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey, {
@@ -21,49 +19,92 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   }
 });
 
-// ============================================
-// FILE UPLOAD CONFIGURATION
-// ============================================
-const chatUploadDir = path.join(__dirname, '../../uploads/chat');
-if (!fs.existsSync(chatUploadDir)) {
-  fs.mkdirSync(chatUploadDir, { recursive: true });
-}
+const CHAT_BUCKET = 'chat-media';
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-const chatStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, chatUploadDir);
-  },
-  filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, unique + path.extname(file.originalname));
+const ALLOWED_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/jpg',
+  'image/gif',
+  'image/webp',
+  'video/mp4',
+  'video/webm',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+];
+
+// Render's local filesystem is ephemeral. Files are therefore uploaded directly
+// into Supabase Storage instead of /uploads/chat.
+(async () => {
+  try {
+    const { data: buckets, error: listError } =
+      await supabase.storage.listBuckets();
+
+    if (listError) {
+      console.error('❌ Could not inspect Storage:', listError.message);
+      return;
+    }
+
+    const exists = (buckets || []).some(
+      (bucket) => bucket.name === CHAT_BUCKET
+    );
+
+    if (!exists) {
+      const { error } = await supabase.storage.createBucket(CHAT_BUCKET, {
+        public: true,
+        fileSizeLimit: `${MAX_FILE_SIZE}B`,
+        allowedMimeTypes: ALLOWED_TYPES
+      });
+
+      if (error &&
+          !String(error.message || '').toLowerCase().includes('already exists')) {
+        console.error('❌ Could not create chat-media bucket:', error.message);
+      } else {
+        console.log('✅ Chat media bucket ready');
+      }
+    } else {
+      console.log('✅ Chat media bucket ready');
+    }
+  } catch (error) {
+    console.error('❌ Chat storage initialization failed:', error);
+  }
+})();
+
+const chatUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_TYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(
+        new Error(
+          'Invalid file type. Images, videos, PDF, DOC and DOCX files are allowed.'
+        ),
+        false
+      );
+    }
   }
 });
 
-const chatFileFilter = (req, file, cb) => {
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'video/mp4', 'video/webm', 'application/pdf'];
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Invalid file type. Only images, videos, and PDFs are allowed.'), false);
-  }
-};
-
-const chatUpload = multer({ 
-  storage: chatStorage,
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: chatFileFilter
-});
-
-// Apply Auth Middleware to all routes
 router.use(authMiddleware);
 
-// ============================================
-// GET ALL CHAT MESSAGES
-// ============================================
+const getUserId = (req) =>
+  req.user?.id || req.user?.userId || req.user?.sub || null;
+
+const getPublicStorageUrl = (storagePath) => {
+  const { data } = supabase.storage
+    .from(CHAT_BUCKET)
+    .getPublicUrl(storagePath);
+
+  return data?.publicUrl || null;
+};
+
+// GET MESSAGES
 router.get('/messages', async (req, res) => {
   try {
-    console.log('📤 Fetching chat messages...');
-    
     const { data, error } = await supabase
       .from('chat_messages')
       .select(`
@@ -80,32 +121,123 @@ router.get('/messages', async (req, res) => {
       .limit(100);
 
     if (error) {
-      if (error.message && error.message.includes('does not exist')) {
-        console.log('ℹ️  chat_messages table does not exist yet');
-        return res.json([]);
-      }
       console.error('❌ Error fetching messages:', error);
       return res.status(500).json({ error: error.message });
     }
-    
-    console.log(`✅ Fetched ${data?.length || 0} messages`);
+
     res.json(data || []);
   } catch (error) {
-    console.error('❌ Error fetching messages:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ============================================
-// SEND A CHAT MESSAGE (WITHOUT FILE)
-// ============================================
+// GET READ STATE
+router.get('/read-state', async (req, res) => {
+  try {
+    const userId = getUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { data, error } = await supabase
+      .from('chat_read_states')
+      .select(
+        'id, user_id, last_read_message_id, last_read_at, updated_at'
+      )
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      if (String(error.message || '').toLowerCase().includes('does not exist')) {
+        return res.json({
+          user_id: userId,
+          last_read_message_id: null,
+          last_read_at: null
+        });
+      }
+
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json(
+      data || {
+        user_id: userId,
+        last_read_message_id: null,
+        last_read_at: null
+      }
+    );
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// SAVE READ STATE
+router.post('/read-state', async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { messageId, createdAt } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!messageId) {
+      return res.status(400).json({ error: 'messageId is required' });
+    }
+
+    const { data: message, error: messageError } = await supabase
+      .from('chat_messages')
+      .select('id, created_at')
+      .eq('id', messageId)
+      .maybeSingle();
+
+    if (messageError) {
+      return res.status(500).json({ error: messageError.message });
+    }
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    const { data, error } = await supabase
+      .from('chat_read_states')
+      .upsert(
+        {
+          user_id: userId,
+          last_read_message_id: message.id,
+          last_read_at: createdAt || message.created_at,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'user_id' }
+      )
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({ success: true, readState: data });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// SEND TEXT
 router.post('/messages', async (req, res) => {
   try {
     const { content, replyTo } = req.body;
-    const userId = req.user?.id;
+    const userId = getUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     if (!content || !content.trim()) {
-      return res.status(400).json({ error: 'Message content is required' });
+      return res.status(400).json({
+        error: 'Message content is required'
+      });
     }
 
     const { data, error } = await supabase
@@ -123,100 +255,148 @@ router.post('/messages', async (req, res) => {
       .single();
 
     if (error) {
-      console.error('❌ Error sending message:', error);
       return res.status(500).json({ error: error.message });
     }
-    
-    console.log('✅ Message sent:', data?.id);
+
     res.status(201).json(data);
   } catch (error) {
-    console.error('❌ Error sending message:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ============================================
-// SEND A CHAT MESSAGE (WITH FILE)
-// ============================================
-router.post('/messages-with-file', chatUpload.single('file'), async (req, res) => {
-  try {
-    const { content, replyTo } = req.body;
-    const userId = req.user?.id;
+// SEND FILE/TEXT WITH PERSISTENT STORAGE
+router.post(
+  '/messages-with-file',
+  chatUpload.single('file'),
+  async (req, res) => {
+    try {
+      const { content, replyTo } = req.body;
+      const userId = getUserId(req);
 
-    if ((!content || !content.trim()) && !req.file) {
-      return res.status(400).json({ error: 'Message or file is required' });
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      if ((!content || !content.trim()) && !req.file) {
+        return res.status(400).json({
+          error: 'Message or file is required'
+        });
+      }
+
+      let fileUrl = null;
+      let storagePath = null;
+      let fileType = null;
+      let fileName = null;
+
+      if (req.file) {
+        const safeName = path
+          .basename(req.file.originalname)
+          .replace(/[^a-zA-Z0-9._-]/g, '_');
+
+        storagePath =
+          `${userId}/${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 10)}-${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from(CHAT_BUCKET)
+          .upload(storagePath, req.file.buffer, {
+            contentType: req.file.mimetype,
+            upsert: false,
+            cacheControl: '31536000'
+          });
+
+        if (uploadError) {
+          console.error(
+            '❌ Persistent media upload failed:',
+            uploadError.message
+          );
+
+          return res.status(500).json({
+            error: `Media upload failed: ${uploadError.message}`
+          });
+        }
+
+        fileUrl = getPublicStorageUrl(storagePath);
+        fileType = req.file.mimetype;
+        fileName = req.file.originalname;
+
+        if (!fileUrl) {
+          await supabase.storage
+            .from(CHAT_BUCKET)
+            .remove([storagePath]);
+
+          return res.status(500).json({
+            error: 'Could not create persistent media URL'
+          });
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .insert({
+          content: content?.trim() || '📎 Attachment',
+          user_id: userId,
+          reply_to: replyTo || null,
+          file_url: fileUrl,
+          file_type: fileType,
+          file_name: fileName,
+          created_at: new Date().toISOString()
+        })
+        .select(`
+          *,
+          user:users(id, username, full_name)
+        `)
+        .single();
+
+      if (error) {
+        if (storagePath) {
+          await supabase.storage
+            .from(CHAT_BUCKET)
+            .remove([storagePath]);
+        }
+
+        return res.status(500).json({ error: error.message });
+      }
+
+      res.status(201).json(data);
+    } catch (error) {
+      console.error('❌ File message error:', error);
+      res.status(500).json({
+        error: error.message || 'Failed to send attachment'
+      });
     }
-
-    let file_url = null;
-    let file_type = null;
-    let file_name = null;
-
-    if (req.file) {
-      file_url = `/uploads/chat/${req.file.filename}`;
-      file_type = req.file.mimetype;
-      file_name = req.file.originalname;
-    }
-
-    const { data, error } = await supabase
-      .from('chat_messages')
-      .insert({
-        content: content?.trim() || '📎 Attachment',
-        user_id: userId,
-        reply_to: replyTo || null,
-        file_url: file_url,
-        file_type: file_type,
-        file_name: file_name,
-        created_at: new Date().toISOString()
-      })
-      .select(`
-        *,
-        user:users(id, username, full_name)
-      `)
-      .single();
-
-    if (error) {
-      console.error('❌ Error sending message with file:', error);
-      if (req.file && req.file.path) fs.unlink(req.file.path, () => {});
-      return res.status(500).json({ error: error.message });
-    }
-    
-    console.log('✅ Message with file sent:', data?.id);
-    res.status(201).json(data);
-  } catch (error) {
-    console.error('❌ Error sending message with file:', error);
-    if (req.file && req.file.path) fs.unlink(req.file.path, () => {});
-    res.status(500).json({ error: error.message });
   }
-});
+);
 
-// ============================================
-// DELETE A CHAT MESSAGE
-// ============================================
+// DELETE OWN MESSAGE
 router.delete('/messages/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user?.id;
+    const userId = getUserId(req);
 
-    // Fetch message to clear attached local file if present
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const { data: message, error: fetchError } = await supabase
       .from('chat_messages')
-      .select('file_url')
+      .select('id, user_id, file_url')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (fetchError) {
-      console.error('❌ Error fetching message:', fetchError);
       return res.status(500).json({ error: fetchError.message });
     }
 
-    if (message?.file_url) {
-      const fileName = message.file_url.replace('/uploads/chat/', '');
-      const filePath = path.join(chatUploadDir, fileName);
-      if (fs.existsSync(filePath)) {
-        fs.unlink(filePath, (err) => {
-          if (err) console.error('Error deleting file:', err);
-        });
-      }
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (String(message.user_id) !== String(userId)) {
+      return res.status(403).json({
+        error: 'You can only delete your own messages'
+      });
     }
 
     const { error } = await supabase
@@ -226,250 +406,63 @@ router.delete('/messages/:id', async (req, res) => {
       .eq('user_id', userId);
 
     if (error) {
-      console.error('❌ Error deleting message:', error);
       return res.status(500).json({ error: error.message });
     }
-    
-    res.json({ message: 'Message deleted successfully' });
+
+    // Remove persistent media from Supabase Storage.
+    if (
+      message.file_url &&
+      message.file_url.includes(
+        `/storage/v1/object/public/${CHAT_BUCKET}/`
+      )
+    ) {
+      const marker =
+        `/storage/v1/object/public/${CHAT_BUCKET}/`;
+
+      const storagePath = decodeURIComponent(
+        message.file_url.split(marker)[1] || ''
+      );
+
+      if (storagePath) {
+        await supabase.storage
+          .from(CHAT_BUCKET)
+          .remove([storagePath]);
+      }
+    }
+
+    res.json({
+      message: 'Message deleted successfully'
+    });
   } catch (error) {
-    console.error('❌ Error deleting message:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ============================================
-// REACT TO A MESSAGE - FIXED
-// ============================================
+// REACTIONS
 router.post('/messages/:id/react', async (req, res) => {
   try {
     const { id } = req.params;
     const { emoji } = req.body;
-    const userId = req.user?.id;
+    const userId = getUserId(req);
 
-    console.log(`📤 Reacting to message ${id} with ${emoji} from user ${userId}`);
-
-    if (!emoji) {
-      return res.status(400).json({ error: 'Emoji is required' });
-    }
-
-    if (!userId) {
-      return res.status(401).json({ error: 'User not authenticated' });
-    }
-
-    // Check if message exists
-    const { data: message, error: messageError } = await supabase
-      .from('chat_messages')
-      .select('id')
-      .eq('id', id)
-      .single();
-
-    if (messageError) {
-      console.error('❌ Message not found:', messageError);
-      return res.status(404).json({ error: 'Message not found' });
-    }
-
-    // Check if user already reacted with this specific emoji
-    const { data: existing } = await supabase
-      .from('message_reactions')
-      .select('id, emoji')
-      .eq('message_id', id)
-      .eq('user_id', userId)
-      .eq('emoji', emoji)
-      .maybeSingle();
-
-    let action;
-
-    if (existing) {
-      // Toggle reaction off
-      const { error: deleteError } = await supabase
-        .from('message_reactions')
-        .delete()
-        .eq('id', existing.id);
-
-      if (deleteError) {
-        console.error('❌ Error deleting reaction:', deleteError);
-        return res.status(500).json({ error: deleteError.message });
-      }
-      action = 'removed';
-    } else {
-      // Add reaction
-      const { error: insertError } = await supabase
-        .from('message_reactions')
-        .insert({
-          message_id: id,
-          user_id: userId,
-          emoji: emoji,
-          created_at: new Date().toISOString()
-        });
-
-      if (insertError) {
-        console.error('❌ Error inserting reaction:', insertError);
-        return res.status(500).json({ error: insertError.message });
-      }
-      action = 'added';
-    }
-
-    // Fetch and return full updated list of reactions for this message
-    const { data: updatedReactions, error: reactionsError } = await supabase
-      .from('message_reactions')
-      .select(`
-        id,
-        emoji,
-        user_id,
-        user:users(id, username)
-      `)
-      .eq('message_id', id);
-
-    if (reactionsError) {
-      console.error('❌ Error fetching updated reactions:', reactionsError);
-      return res.status(500).json({ error: reactionsError.message });
-    }
-
-    console.log(`✅ Reaction ${action} successfully`);
-    res.json({
-      success: true,
-      action,
-      messageId: id,
-      reactions: updatedReactions || []
-    });
-
-  } catch (error) {
-    console.error('❌ Error reacting to message:', error);
-    res.status(500).json({ error: error.message || 'Failed to react to message' });
-  }
-});
-
-// ============================================
-// GET ONLINE USERS
-// ============================================
-router.get('/users/online', async (req, res) => {
-  try {
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    
-    const { data, error } = await supabase
-      .from('users')
-      .select('id, username, full_name, last_active')
-      .gte('last_active', fiveMinutesAgo)
-      .limit(50);
-
-    if (error) {
-      console.error('❌ Error fetching online users:', error);
-      return res.json([]);
-    }
-    
-    res.json(data || []);
-  } catch (error) {
-    console.error('❌ Error fetching online users:', error);
-    res.json([]);
-  }
-});
-
-// ============================================
-// UPDATE USER ACTIVITY
-// ============================================
-router.post('/users/active', async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { error } = await supabase
-      .from('users')
-      .update({ last_active: new Date().toISOString() })
-      .eq('id', userId);
-
-    if (error) {
-      console.error('❌ Error updating user activity:', error);
-      return res.status(500).json({ error: error.message });
-    }
-    
-    res.json({ success: true });
-  } catch (error) {
-    console.error('❌ Error updating user activity:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ============================================
-// GET CURRENT USER CHAT READ STATE
-// ============================================
-router.get('/read-state', async (req, res) => {
-  try {
-    const userId = req.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({
-        error: 'Unauthorized'
-      });
-    }
-
-    const { data, error } = await supabase
-      .from('chat_read_states')
-      .select(`
-        id,
-        user_id,
-        last_read_message_id,
-        last_read_at,
-        updated_at
-      `)
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (error) {
-      console.error('❌ Error loading chat read state:', error);
-      return res.status(500).json({
-        error: error.message
-      });
-    }
-
-    res.json(
-      data || {
-        user_id: userId,
-        last_read_message_id: null,
-        last_read_at: null
-      }
-    );
-  } catch (error) {
-    console.error('❌ Read state error:', error);
-
-    res.status(500).json({
-      error: error.message || 'Failed to load chat read state'
-    });
-  }
-});
-
-
-// ============================================
-// SAVE CURRENT USER CHAT READ STATE
-// ============================================
-router.post('/read-state', async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    const { messageId, readAt } = req.body;
-
-    if (!userId) {
-      return res.status(401).json({
-        error: 'Unauthorized'
-      });
-    }
-
-    if (!messageId) {
+    if (!emoji) {
       return res.status(400).json({
-        error: 'messageId is required'
+        error: 'Emoji is required'
       });
     }
 
-    const { data: message, error: messageError } = await supabase
-      .from('chat_messages')
-      .select('id, created_at')
-      .eq('id', messageId)
-      .maybeSingle();
+    const { data: message, error: messageError } =
+      await supabase
+        .from('chat_messages')
+        .select('id')
+        .eq('id', id)
+        .maybeSingle();
 
     if (messageError) {
-      console.error('❌ Error validating read message:', messageError);
-
       return res.status(500).json({
         error: messageError.message
       });
@@ -481,42 +474,96 @@ router.post('/read-state', async (req, res) => {
       });
     }
 
-    const timestamp = readAt || message.created_at;
+    const { data: existing } = await supabase
+      .from('message_reactions')
+      .select('id')
+      .eq('message_id', id)
+      .eq('user_id', userId)
+      .eq('emoji', emoji)
+      .maybeSingle();
 
-    const { data, error } = await supabase
-      .from('chat_read_states')
-      .upsert(
-        {
+    if (existing) {
+      const { error } = await supabase
+        .from('message_reactions')
+        .delete()
+        .eq('id', existing.id);
+
+      if (error) {
+        return res.status(500).json({
+          error: error.message
+        });
+      }
+    } else {
+      const { error } = await supabase
+        .from('message_reactions')
+        .insert({
+          message_id: id,
           user_id: userId,
-          last_read_message_id: message.id,
-          last_read_at: timestamp,
-          updated_at: new Date().toISOString()
-        },
-        {
-          onConflict: 'user_id'
-        }
-      )
-      .select()
-      .single();
+          emoji,
+          created_at: new Date().toISOString()
+        });
 
-    if (error) {
-      console.error('❌ Error saving chat read state:', error);
+      if (error) {
+        return res.status(500).json({
+          error: error.message
+        });
+      }
+    }
 
+    const { data: reactions, error: reactionsError } =
+      await supabase
+        .from('message_reactions')
+        .select(`
+          id,
+          emoji,
+          user_id,
+          user:users(id, username)
+        `)
+        .eq('message_id', id);
+
+    if (reactionsError) {
       return res.status(500).json({
-        error: error.message
+        error: reactionsError.message
       });
     }
 
     res.json({
       success: true,
-      readState: data
+      messageId: id,
+      reactions: reactions || []
     });
   } catch (error) {
-    console.error('❌ Save read state error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
-    res.status(500).json({
-      error: error.message || 'Failed to save chat read state'
-    });
+// USER ACTIVITY
+router.post('/users/active', async (req, res) => {
+  try {
+    const userId = getUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        error: 'Unauthorized'
+      });
+    }
+
+    const { error } = await supabase
+      .from('users')
+      .update({
+        last_active: new Date().toISOString()
+      })
+      .eq('id', userId);
+
+    if (error) {
+      return res.status(500).json({
+        error: error.message
+      });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

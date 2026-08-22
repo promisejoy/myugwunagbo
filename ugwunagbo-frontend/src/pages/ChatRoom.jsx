@@ -18,7 +18,6 @@ import {
   FaImage,
   FaFile,
   FaSpinner,
-  FaUsers,
   FaComments,
   FaCheck,
 } from 'react-icons/fa';
@@ -625,13 +624,11 @@ const ChatRoom = () => {
   const { user, isAuthenticated } = useAuth();
 
   const [messages, setMessages] = useState([]);
-  const [users, setUsers] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [replyTo, setReplyTo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
-  const [showUsers, setShowUsers] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [lastReadMessageId, setLastReadMessageId] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -787,26 +784,6 @@ const ChatRoom = () => {
   }, [calculateUnread, notifyNewMessages, unreadCount]);
 
   /* ==========================================================
-     LOAD USERS
-  ========================================================== */
-
-  const loadUsers = useCallback(async () => {
-    try {
-      const response = await api.getOnlineUsers();
-
-      if (!isMountedRef.current) return;
-
-      setUsers(
-        Array.isArray(response.data)
-          ? response.data
-          : []
-      );
-    } catch (error) {
-      console.error('Error loading users:', error);
-    }
-  }, []);
-
-  /* ==========================================================
      ACTIVITY
   ========================================================== */
 
@@ -833,14 +810,12 @@ const ChatRoom = () => {
     loadReadState();
     requestNotificationPermission();
     loadMessages();
-    loadUsers();
     updateActivity();
 
     const interval = setInterval(() => {
       if (!isMountedRef.current) return;
 
       loadMessages(true);
-      loadUsers();
       updateActivity();
     }, 5000);
 
@@ -851,7 +826,6 @@ const ChatRoom = () => {
   }, [
     isAuthenticated,
     loadMessages,
-    loadUsers,
     updateActivity,
     loadReadState,
     requestNotificationPermission,
@@ -935,14 +909,13 @@ const ChatRoom = () => {
     const handleVisibility = () => {
       if (!document.hidden && isAuthenticated) {
         loadMessages(true);
-        loadUsers();
-        updateActivity();
+            updateActivity();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [isAuthenticated, loadMessages, loadUsers, updateActivity]);
+  }, [isAuthenticated, loadMessages, updateActivity]);
 
   /* ==========================================================
      FILE SELECT
@@ -1310,48 +1283,12 @@ const ChatRoom = () => {
               Live Chat
             </h3>
 
-            <p className="flex items-center gap-1 text-[10px] text-white/80 sm:text-xs">
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-green-300" />
-
-              <span className="truncate">
-                {users.length} online
-              </span>
+            <p className="text-[10px] text-white/80 sm:text-xs">
+              Your community conversation space
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowUsers((prev) => !prev)}
-          className="
-            relative
-            z-10
-            flex
-            flex-shrink-0
-            items-center
-            gap-1.5
-            rounded-xl
-            border
-            border-white/10
-            bg-white/10
-            px-2.5
-            py-2
-            text-xs
-            shadow-sm
-            backdrop-blur-md
-            transition
-            hover:bg-white/20
-            sm:px-3
-            sm:text-sm
-          "
-          aria-label={showUsers ? 'Hide users' : 'Show users'}
-        >
-          <FaUsers />
-
-          <span className="hidden sm:inline">
-            {showUsers ? 'Hide Users' : 'Users'}
-          </span>
-        </button>
       </header>
 
       {/* ======================================================
@@ -1370,102 +1307,6 @@ const ChatRoom = () => {
         {/* ====================================================
             USERS
         ==================================================== */}
-
-        {showUsers && (
-          <aside
-            className="
-              flex
-              w-28
-              min-w-0
-              flex-shrink-0
-              flex-col
-              overflow-x-hidden
-              overflow-y-auto
-              border-r
-              border-gray-200
-              bg-gray-50
-              p-2
-              sm:w-40
-              sm:p-3
-              md:w-48
-            "
-          >
-            <h4
-              className="
-                mb-2
-                flex
-                min-w-0
-                items-center
-                gap-1.5
-                text-[10px]
-                font-semibold
-                text-gray-700
-                sm:mb-3
-                sm:gap-2
-                sm:text-sm
-              "
-            >
-              <FaUsers className="flex-shrink-0 text-green-500" />
-
-              <span className="truncate">
-                Online Users
-              </span>
-            </h4>
-
-            <div className="min-w-0 space-y-1">
-              {users.length > 0 ? (
-                users.map((onlineUser) => (
-                  <div
-                    key={
-                      onlineUser.id ||
-                      onlineUser._id ||
-                      onlineUser.username
-                    }
-                    className="
-                      flex
-                      min-w-0
-                      max-w-full
-                      items-center
-                      gap-2
-                      overflow-hidden
-                      rounded-lg
-                      px-1.5
-                      py-2
-                      transition
-                      hover:bg-gray-100
-                    "
-                  >
-                    <span
-                      className="
-                        h-2
-                        w-2
-                        flex-shrink-0
-                        rounded-full
-                        bg-green-500
-                      "
-                    />
-
-                    <span
-                      className="
-                        min-w-0
-                        truncate
-                        text-[10px]
-                        text-gray-700
-                        sm:text-sm
-                      "
-                    >
-                      {onlineUser.username}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-[10px] text-gray-400 sm:text-xs">
-                  No users online
-                </p>
-              )}
-            </div>
-          </aside>
-        )}
 
         {/* ====================================================
             CHAT
