@@ -78,7 +78,7 @@ function AuthModal({
           </h2>
           <p className="mt-1 text-sm text-white/70">
             {mode === 'login'
-              ? 'Login to join the Ugwunagbo forum'
+              ? 'Login to join the ChatMore'
               : 'Create your community account'}
           </p>
         </div>
@@ -388,9 +388,9 @@ function ForumPage() {
               <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-[#ffcc00] shadow-lg">
                 <FaComments className="text-4xl text-[#006400]" />
               </div>
-              <h1 className="text-3xl font-bold text-white">Diaspora Forum</h1>
+              <h1 className="text-3xl font-bold text-white">ChatMore</h1>
               <p className="mt-2 text-sm text-white/75">
-                Connect with Ugwunagbo people home and abroad.
+                Connect with family and friends.
               </p>
             </div>
 
@@ -458,11 +458,9 @@ function ForumPage() {
               </div>
               <div className="min-w-0">
                 <h1 className="truncate text-xl font-bold sm:text-2xl">
-                  Ugwunagbo Community
+                  ChatMore
                 </h1>
-                <p className="text-xs text-white/70 sm:text-sm">
-                  Diaspora Forum & Live Chat
-                </p>
+               
               </div>
             </div>
 
