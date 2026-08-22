@@ -1,19 +1,13 @@
 {
-  "version": 2,
-  "builds": [
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
     {
-      "src": "ugwunagbo-frontend/dist/**",
-      "use": "@vercel/static"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "https://ugwunagbo-backend.onrender.com/api/$1"
+      "source": "/api/:path*",
+      "destination": "https://ugwunagbo-backend.onrender.com/api/:path*"
     },
     {
-      "src": "/(.*)",
-      "dest": "/ugwunagbo-frontend/dist/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
