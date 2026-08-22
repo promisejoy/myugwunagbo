@@ -12,10 +12,6 @@
       "dest": "https://ugwunagbo-backend.onrender.com/api/$1"
     },
     {
-      "src": "/(.*)\\.(.*)",
-      "dest": "/ugwunagbo-frontend/dist/$1.$2"
-    },
-    {
       "src": "/(.*)",
       "dest": "/ugwunagbo-frontend/dist/index.html"
     }
