@@ -50,6 +50,47 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: fileFilter
 });
+// ============================================
+// AUTHORITATIVE SERVICE PRICE LOOKUP
+// The browser never determines the amount stored on an application.
+// ============================================
+const getServicePrice = async (serviceType) => {
+  const normalized = String(serviceType || '').trim();
+
+  if (!normalized) {
+    throw new Error('Service type is required');
+  }
+
+  const { data, error } = await supabase
+    .from('service_prices')
+    .select('service_type, amount, currency, description, updated_at')
+    .eq('service_type', normalized)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Unable to load service price: ${error.message}`);
+  }
+
+  if (!data) {
+    const error = new Error(`No price has been configured for "${normalized}". Please contact the administrator.`);
+    error.code = 'SERVICE_PRICE_NOT_CONFIGURED';
+    throw error;
+  }
+
+  const amount = Number(data.amount);
+
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new Error(`Invalid configured price for "${normalized}". Please contact the administrator.`);
+  }
+
+  return {
+    amount,
+    currency: data.currency || 'NGN',
+    description: data.description || '',
+    updated_at: data.updated_at || null
+  };
+};
+
 
 // ============================================
 // GET ALL APPLICATIONS
@@ -85,6 +126,15 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
+    // IMPORTANT: price comes from the database, never from the browser.
+    let servicePrice;
+    try {
+      servicePrice = await getServicePrice(service_type);
+    } catch (priceError) {
+      const status = priceError.code === 'SERVICE_PRICE_NOT_CONFIGURED' ? 409 : 500;
+      return res.status(status).json({ error: priceError.message });
+    }
+
     const timestamp = Date.now().toString(36);
     const random = Math.random().toString(36).substr(2, 5);
     const applicationId = `UGW-${timestamp}-${random}`.toUpperCase();
@@ -95,6 +145,8 @@ router.post('/', async (req, res) => {
       email: email.trim().toLowerCase(),
       phone: phone ? phone.trim() : '',
       service_type: service_type.trim(),
+      service_price: servicePrice.amount,
+      service_currency: servicePrice.currency,
       description: description ? description.trim() : '',
       application_id: applicationId,
       status: 'pending',
@@ -138,6 +190,16 @@ router.post('/apply-with-file', upload.single('authorization_file'), async (req,
     if (!emailRegex.test(email)) {
       if (req.file && req.file.path) fs.unlink(req.file.path, () => {});
       return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    // IMPORTANT: price comes from the database, never from the browser.
+    let servicePrice;
+    try {
+      servicePrice = await getServicePrice(service_type);
+    } catch (priceError) {
+      if (req.file && req.file.path) fs.unlink(req.file.path, () => {});
+      const status = priceError.code === 'SERVICE_PRICE_NOT_CONFIGURED' ? 409 : 500;
+      return res.status(status).json({ error: priceError.message });
     }
 
     // For LGA applications, validate traditional ruler fields
@@ -212,6 +274,8 @@ router.post('/apply-with-file', upload.single('authorization_file'), async (req,
       email: email.trim().toLowerCase(),
       phone: phone ? phone.trim() : '',
       service_type: service_type.trim(),
+      service_price: servicePrice.amount,
+      service_currency: servicePrice.currency,
       description: description ? description.trim() : '',
       application_id: applicationId,
       status: 'pending',
@@ -243,76 +307,40 @@ router.post('/apply-with-file', upload.single('authorization_file'), async (req,
 
 // ============================================
 // GET SERVICE PRICES
+// Public read endpoint: users see exactly what the admin configured.
+// There are NO hard-coded fallback prices.
 // ============================================
 router.get('/prices', async (req, res) => {
   try {
-    console.log('📤 Fetching service prices...');
-    
-    // Check if table exists
-    const { data: tableCheck, error: tableError } = await supabase
-      .from('service_prices')
-      .select('count')
-      .limit(1);
-    
-    if (tableError) {
-      console.error('❌ Table check error:', tableError);
-      
-      // If table doesn't exist, return default prices
-      if (tableError.message && tableError.message.includes('does not exist')) {
-        console.log('ℹ️  service_prices table does not exist yet, returning default prices');
-        return res.json({
-          success: true,
-          data: {
-            'Birth Certificate': { amount: 5000, currency: 'NGN', description: 'Birth certificate processing' },
-            'Marriage Certificate': { amount: 10000, currency: 'NGN', description: 'Marriage certificate processing' },
-            'Local Government of Origin': { amount: 3000, currency: 'NGN', description: 'LGA origin certificate' },
-            'Business Permit': { amount: 15000, currency: 'NGN', description: 'Business permit processing' },
-            'Building Plan Approval': { amount: 20000, currency: 'NGN', description: 'Building plan approval' },
-            'Tax Clearance Certificate': { amount: 5000, currency: 'NGN', description: 'Tax clearance certificate' },
-            'Market Stall Permit': { amount: 8000, currency: 'NGN', description: 'Market stall permit' },
-            'Social Welfare': { amount: 3000, currency: 'NGN', description: 'Social welfare application' },
-            'Village Directory': { amount: 2000, currency: 'NGN', description: 'Village directory listing' },
-            'Other': { amount: 5000, currency: 'NGN', description: 'Other services' }
-          }
-        });
-      }
-      
-      return res.status(500).json({ 
-        success: false, 
-        error: 'Database error: ' + tableError.message 
-      });
-    }
-    
-    // Fetch all prices
     const { data, error } = await supabase
       .from('service_prices')
-      .select('*');
-    
+      .select('service_type, amount, currency, description, updated_at')
+      .order('service_type', { ascending: true });
+
     if (error) {
       console.error('❌ Error fetching service prices:', error);
-      return res.status(500).json({ 
-        success: false, 
-        error: 'Database error: ' + error.message 
+      return res.status(500).json({
+        success: false,
+        error: 'Database error: ' + error.message
       });
     }
-    
+
     const prices = {};
-    (data || []).forEach(item => {
+    (data || []).forEach((item) => {
       prices[item.service_type] = {
-        amount: item.amount,
+        amount: Number(item.amount),
         currency: item.currency || 'NGN',
-        description: item.description || ''
+        description: item.description || '',
+        updated_at: item.updated_at || null
       };
     });
-    
-    console.log('✅ Service prices fetched successfully');
-    res.json({ success: true, data: prices });
-    
+
+    return res.json({ success: true, data: prices });
   } catch (error) {
     console.error('❌ Unexpected error fetching service prices:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Failed to fetch service prices' 
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch service prices'
     });
   }
 });
@@ -333,7 +361,7 @@ router.put('/prices/:serviceType', async (req, res) => {
     }
     
     const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount)) {
+    if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
       return res.status(400).json({ 
         success: false,
         error: 'Amount must be a valid number.'
