@@ -25,6 +25,12 @@ import LoginModal from '../auth/LoginModal';
 
 const Header = () => {
   const { isAuthenticated, user, logout } = useAuth();
+
+  const isAdmin =
+    user?.role === 'admin' ||
+    user?.role === 'administrator' ||
+    user?.is_admin === true ||
+    user?.isAdmin === true;
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const navigate = useNavigate();
@@ -78,13 +84,15 @@ const Header = () => {
 
               {isAuthenticated ? (
                 <div className="flex items-center space-x-3 flex-shrink-0">
-                  <Link
-                    to="/admin"
-                    className="flex items-center space-x-1 bg-[#ffcc00] text-[#006400] px-3 py-1.5 rounded-lg hover:bg-[#e6b800] transition-colors text-sm font-medium whitespace-nowrap"
-                  >
-                    <FaCog className="text-sm" />
-                    <span>Dashboard</span>
-                  </Link>
+                  {isAdmin && (
+                    <Link
+                      to="/admin"
+                      className="flex items-center space-x-1 bg-[#ffcc00] text-[#006400] px-3 py-1.5 rounded-lg hover:bg-[#e6b800] transition-colors text-sm font-medium whitespace-nowrap"
+                    >
+                      <FaCog className="text-sm" />
+                      <span>Dashboard</span>
+                    </Link>
+                  )}
                   
                   <span className="text-sm font-medium text-[#ffcc00] hidden xl:inline-flex items-center gap-1 whitespace-nowrap">
                     <FaUserCircle className="text-sm" />
@@ -114,13 +122,15 @@ const Header = () => {
             <div className="flex lg:hidden items-center space-x-1 sm:space-x-2 flex-shrink-0">
               {isAuthenticated ? (
                 <>
-                  <Link
-                    to="/admin"
-                    className="flex items-center space-x-1 bg-[#ffcc00] text-[#006400] px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg hover:bg-[#e6b800] transition-colors text-xs font-medium whitespace-nowrap"
-                  >
-                    <FaCog className="text-xs sm:text-sm" />
-                    <span className="hidden xs:inline">Dashboard</span>
-                  </Link>
+                  {isAdmin && (
+                    <Link
+                      to="/admin"
+                      className="flex items-center space-x-1 bg-[#ffcc00] text-[#006400] px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-lg hover:bg-[#e6b800] transition-colors text-xs font-medium whitespace-nowrap"
+                    >
+                      <FaCog className="text-xs sm:text-sm" />
+                      <span className="hidden xs:inline">Dashboard</span>
+                    </Link>
+                  )}
                   
                   <button
                     onClick={handleLogout}

@@ -1283,9 +1283,7 @@ const ChatRoom = () => {
               Live Chat
             </h3>
 
-            <p className="text-[10px] text-white/80 sm:text-xs">
-              Your community conversation space
-            </p>
+            
           </div>
         </div>
 
