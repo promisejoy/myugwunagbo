@@ -392,4 +392,132 @@ router.post('/users/active', async (req, res) => {
   }
 });
 
+// ============================================
+// GET CURRENT USER CHAT READ STATE
+// ============================================
+router.get('/read-state', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        error: 'Unauthorized'
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('chat_read_states')
+      .select(`
+        id,
+        user_id,
+        last_read_message_id,
+        last_read_at,
+        updated_at
+      `)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('❌ Error loading chat read state:', error);
+      return res.status(500).json({
+        error: error.message
+      });
+    }
+
+    res.json(
+      data || {
+        user_id: userId,
+        last_read_message_id: null,
+        last_read_at: null
+      }
+    );
+  } catch (error) {
+    console.error('❌ Read state error:', error);
+
+    res.status(500).json({
+      error: error.message || 'Failed to load chat read state'
+    });
+  }
+});
+
+
+// ============================================
+// SAVE CURRENT USER CHAT READ STATE
+// ============================================
+router.post('/read-state', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { messageId, readAt } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({
+        error: 'Unauthorized'
+      });
+    }
+
+    if (!messageId) {
+      return res.status(400).json({
+        error: 'messageId is required'
+      });
+    }
+
+    const { data: message, error: messageError } = await supabase
+      .from('chat_messages')
+      .select('id, created_at')
+      .eq('id', messageId)
+      .maybeSingle();
+
+    if (messageError) {
+      console.error('❌ Error validating read message:', messageError);
+
+      return res.status(500).json({
+        error: messageError.message
+      });
+    }
+
+    if (!message) {
+      return res.status(404).json({
+        error: 'Message not found'
+      });
+    }
+
+    const timestamp = readAt || message.created_at;
+
+    const { data, error } = await supabase
+      .from('chat_read_states')
+      .upsert(
+        {
+          user_id: userId,
+          last_read_message_id: message.id,
+          last_read_at: timestamp,
+          updated_at: new Date().toISOString()
+        },
+        {
+          onConflict: 'user_id'
+        }
+      )
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Error saving chat read state:', error);
+
+      return res.status(500).json({
+        error: error.message
+      });
+    }
+
+    res.json({
+      success: true,
+      readState: data
+    });
+  } catch (error) {
+    console.error('❌ Save read state error:', error);
+
+    res.status(500).json({
+      error: error.message || 'Failed to save chat read state'
+    });
+  }
+});
+
 module.exports = router;
