@@ -1156,16 +1156,16 @@ const AdminPage = () => {
             </div>
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#006400]">Ugwunagbo LGA</p>
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 truncate">Administration Centre</h2>
-              <p className="text-xs sm:text-sm text-slate-500 truncate">Welcome back, {user?.fullName || 'Administrator'}.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 truncate">Dashboard</h2>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => navigate('/')}
-              className="hidden sm:flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:border-[#006400] hover:text-[#006400] transition-all"
+              className=" sm:flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:border-[#006400] hover:text-[#006400] transition-all"
             >
-              <FaHome /> View site
+              <FaHome />
+              <span className="hidden sm:inline">Home</span>
             </button>
             <button
               onClick={handleLogout}
@@ -1209,8 +1209,7 @@ const AdminPage = () => {
               <div className="animate-fadeIn">
                 <div className="mb-6 rounded-3xl bg-gradient-to-r from-[#003d00] via-[#006400] to-[#008000] p-6 sm:p-8 text-white shadow-xl overflow-hidden relative">
                   <div className="relative z-10 max-w-3xl">
-                    <p className="text-[#ffcc00] text-xs font-bold uppercase tracking-[0.2em] mb-2">Command overview</p>
-                    <h1 className="text-2xl sm:text-3xl font-bold">Good to see you, {user?.fullName || 'Administrator'}.</h1>
+                    <h1 className="text-2xl sm:text-3xl font-bold">Welcome back! {user?.fullName || 'Admin'}.</h1>
                     <p className="text-white/75 mt-2 text-sm sm:text-base">Monitor services, applications, public information and community resources from one central workspace.</p>
                   </div>
                   <div className="absolute -right-10 -top-20 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
