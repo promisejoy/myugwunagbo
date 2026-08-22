@@ -186,9 +186,8 @@ const AdminPage = () => {
   const loadServicePrices = async () => {
     try {
       const response = await api.getServicePrices();
-      if (response.data) {
-        setServicePrices(response.data);
-      }
+      const prices = response.data?.data || {};
+      setServicePrices(prices);
     } catch (error) {
       console.error('Error loading service prices:', error);
     }
@@ -197,15 +196,21 @@ const AdminPage = () => {
   // Update service price
   const handlePriceUpdate = async (e) => {
     e.preventDefault();
-    if (!priceForm.service_type || !priceForm.amount) {
+    if (!priceForm.service_type || priceForm.amount === '') {
       toast.error('Please select a service and enter an amount');
+      return;
+    }
+
+    const amount = Number(priceForm.amount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      toast.error('Enter a valid service price of 0 or more.');
       return;
     }
     
     setLoading(true);
     try {
       await api.updateServicePrice(priceForm.service_type, {
-        amount: parseFloat(priceForm.amount),
+        amount,
         currency: priceForm.currency,
         description: priceForm.description
       });
@@ -1141,40 +1146,49 @@ const AdminPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 text-slate-800">
       {/* Header */}
-      <div className="bg-gradient-to-r from-[#006400] to-[#008000] p-4 sticky top-0 z-20 shadow-lg">
-        <div className="container-custom flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center space-x-4">
-            <div className="bg-[#ffcc00] p-3 rounded-2xl">
-              <FaUserShield className="text-[#006400] text-2xl" />
+      <div className="bg-white/95 backdrop-blur border-b border-slate-200 sticky top-0 z-20 shadow-sm">
+        <div className="container-custom flex items-center justify-between gap-4 py-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="bg-gradient-to-br from-[#006400] to-[#008000] p-3 rounded-2xl shadow-lg shadow-green-900/10">
+              <FaUserShield className="text-[#ffcc00] text-2xl" />
             </div>
-            <div>
-              <h2 className="text-2xl font-bold text-white">Admin Dashboard</h2>
-              <p className="text-[#ffcc00]/80 text-sm">Welcome back, {user?.fullName || 'Admin'}!</p>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#006400]">Ugwunagbo LGA</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 truncate">Administration Centre</h2>
+              <p className="text-xs sm:text-sm text-slate-500 truncate">Welcome back, {user?.fullName || 'Administrator'}.</p>
             </div>
           </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl transition-all duration-300 text-sm"
-          >
-            <FaSignOutAlt />
-            <span>Logout</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/')}
+              className="hidden sm:flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:border-[#006400] hover:text-[#006400] transition-all"
+            >
+              <FaHome /> View site
+            </button>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-100 px-3 sm:px-4 py-2 rounded-xl transition-all text-sm font-semibold"
+            >
+              <FaSignOutAlt />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="container-custom py-6">
-        {/* Tabs */}
-        <div className="flex overflow-x-auto bg-white rounded-2xl shadow-md mb-6 p-1 gap-1">
+        {/* Navigation */}
+        <div className="flex overflow-x-auto bg-white/90 border border-slate-200 rounded-2xl shadow-sm mb-6 p-1.5 gap-1 sticky top-[82px] z-10">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 whitespace-nowrap ${
                 activeTab === tab.id
-                  ? 'bg-[#006400] text-white shadow-lg'
-                  : 'text-gray-600 hover:text-[#006400] hover:bg-gray-100'
+                  ? 'bg-gradient-to-r from-[#006400] to-[#008000] text-white shadow-md shadow-green-900/10'
+                  : 'text-slate-600 hover:text-[#006400] hover:bg-slate-50'
               }`}
             >
               <tab.icon className="text-lg" />
@@ -1193,6 +1207,15 @@ const AdminPage = () => {
             {/* Dashboard */}
             {activeTab === 'dashboard' && (
               <div className="animate-fadeIn">
+                <div className="mb-6 rounded-3xl bg-gradient-to-r from-[#003d00] via-[#006400] to-[#008000] p-6 sm:p-8 text-white shadow-xl overflow-hidden relative">
+                  <div className="relative z-10 max-w-3xl">
+                    <p className="text-[#ffcc00] text-xs font-bold uppercase tracking-[0.2em] mb-2">Command overview</p>
+                    <h1 className="text-2xl sm:text-3xl font-bold">Good to see you, {user?.fullName || 'Administrator'}.</h1>
+                    <p className="text-white/75 mt-2 text-sm sm:text-base">Monitor services, applications, public information and community resources from one central workspace.</p>
+                  </div>
+                  <div className="absolute -right-10 -top-20 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
+                  <div className="absolute right-20 -bottom-32 h-64 w-64 rounded-full bg-[#ffcc00]/10 blur-3xl" />
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
                   {[
                     { label: 'Total Leaders', value: stats.totalLeaders, icon: FaUsers, color: 'text-[#006400]' },
@@ -1202,7 +1225,7 @@ const AdminPage = () => {
                     { label: 'Total Villages', value: stats.totalVillages, icon: FaHome, color: 'text-green-600' },
                     { label: 'Notifications', value: stats.unreadNotifications, icon: FaBell, color: 'text-red-600' },
                   ].map((stat, index) => (
-                    <div key={index} className="bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition-all duration-300">
+                    <div key={index} className="group bg-white rounded-2xl p-5 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm text-gray-500 font-medium">{stat.label}</p>
@@ -1215,7 +1238,7 @@ const AdminPage = () => {
                     </div>
                   ))}
                 </div>
-                <div className="bg-white rounded-2xl p-6 shadow-md">
+                <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
                   <h3 className="text-lg font-bold text-gray-800 mb-4">Recent Activity</h3>
                   <p className="text-gray-500">Dashboard is working! Use the tabs above to manage content.</p>
                 </div>

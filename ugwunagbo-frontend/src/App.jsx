@@ -84,7 +84,7 @@ function App() {
           <Route path="/ngos" element={<SitePage><NGOsPage /></SitePage>} />
           <Route path="/academia" element={<SitePage><AcademiaPage /></SitePage>} />
           <Route path="/gallery" element={<SitePage><GalleryPage /></SitePage>} />
-          <Route path="/admin" element={<SitePage><AdminPage /></SitePage>} />
+          <Route path="/admin" element={<AdminPage />} />
 
           <Route path="/department/admin" element={<SitePage><AdministrationDepartment /></SitePage>} />
           <Route path="/department/budget-planning" element={<SitePage><BudgetPlanningDepartment /></SitePage>} />

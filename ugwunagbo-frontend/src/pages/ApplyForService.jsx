@@ -10,6 +10,8 @@ const ApplyForService = () => {
   const [submitted, setSubmitted] = useState(false);
   const [applicationId, setApplicationId] = useState('');
   const [servicePrices, setServicePrices] = useState({});
+  const [pricesLoading, setPricesLoading] = useState(true);
+  const [priceError, setPriceError] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -24,6 +26,7 @@ const ApplyForService = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedServicePrice, setSelectedServicePrice] = useState(0);
   const [submittedServiceType, setSubmittedServiceType] = useState('');
+  const [submittedServicePrice, setSubmittedServicePrice] = useState(null);
 
   const serviceTypes = [
     'Birth Certificate',
@@ -37,45 +40,42 @@ const ApplyForService = () => {
     'Other'
   ];
 
-  // Default prices as fallback
-  const getDefaultPrices = () => {
-    return {
-      'Birth Certificate': { amount: 5000, currency: 'NGN', description: 'Birth certificate processing' },
-      'Marriage Certificate': { amount: 10000, currency: 'NGN', description: 'Marriage certificate processing' },
-      'Local Government of Origin': { amount: 3000, currency: 'NGN', description: 'LGA origin certificate' },
-      'Business Permit': { amount: 15000, currency: 'NGN', description: 'Business permit processing' },
-      'Building Plan Approval': { amount: 20000, currency: 'NGN', description: 'Building plan approval' },
-      'Tax Clearance Certificate': { amount: 5000, currency: 'NGN', description: 'Tax clearance certificate' },
-      'Market Stall Permit': { amount: 8000, currency: 'NGN', description: 'Market stall permit' },
-      'Social Welfare': { amount: 3000, currency: 'NGN', description: 'Social welfare application' },
-      'Other': { amount: 5000, currency: 'NGN', description: 'Other services' }
-    };
-  };
-
   // Fetch service prices from backend
   useEffect(() => {
+    let mounted = true;
+
     const fetchPrices = async () => {
+      setPricesLoading(true);
+      setPriceError('');
+
       try {
-        console.log('🔍 Fetching service prices...');
         const response = await api.getServicePrices();
-        console.log('✅ Service prices response:', response.data);
-        
-        if (response.data && response.data.data) {
-          setServicePrices(response.data.data);
-          console.log('📊 Prices set from response.data.data:', response.data.data);
-        } else if (response.data && typeof response.data === 'object' && !response.data.error) {
-          setServicePrices(response.data);
-          console.log('📊 Prices set from response.data:', response.data);
-        } else {
-          console.warn('⚠️ No valid price data received, using defaults');
-          setServicePrices(getDefaultPrices());
+        const prices = response.data?.data;
+
+        if (!prices || typeof prices !== 'object') {
+          throw new Error('The service price list is unavailable.');
         }
+
+        if (mounted) setServicePrices(prices);
       } catch (error) {
         console.error('❌ Error fetching service prices:', error);
-        setServicePrices(getDefaultPrices());
+        if (mounted) {
+          setServicePrices({});
+          setPriceError(
+            error.response?.data?.error ||
+            'Service prices could not be loaded. Please try again.'
+          );
+        }
+      } finally {
+        if (mounted) setPricesLoading(false);
       }
     };
+
     fetchPrices();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleChange = (e) => {
@@ -162,8 +162,13 @@ const ApplyForService = () => {
     
     // ✅ Get the final price for the selected service
     const finalPrice = getServicePrice(formData.service_type);
-    setSelectedServicePrice(finalPrice);
 
+    if (finalPrice === null) {
+      toast.error('This service does not currently have a price configured by the administrator.');
+      return;
+    }
+
+    setSelectedServicePrice(finalPrice);
     setSubmitting(true);
     try {
       const submitData = new FormData();
@@ -174,7 +179,6 @@ const ApplyForService = () => {
       submitData.append('description', formData.description || '');
       submitData.append('traditional_ruler_name', formData.traditional_ruler_name || '');
       submitData.append('traditional_ruler_title', formData.traditional_ruler_title || '');
-      submitData.append('service_price', finalPrice); // ✅ Send price to backend
       
       if (formData.authorization_file) {
         submitData.append('authorization_file', formData.authorization_file);
@@ -183,8 +187,12 @@ const ApplyForService = () => {
       const response = await api.submitApplicationWithFile(submitData);
       console.log('Application response:', response.data);
       
-      const appId = response.data?.id || response.data?.data?.id || generateApplicationId();
+      const savedApplication = response.data?.data || response.data;
+      const appId = response.data?.application_id || savedApplication?.application_id || savedApplication?.id || generateApplicationId();
+      const savedPrice = Number(savedApplication?.service_price);
+
       setApplicationId(appId);
+      setSubmittedServicePrice(Number.isFinite(savedPrice) ? savedPrice : finalPrice);
       setSubmitted(true);
       toast.success('Application submitted successfully!');
       
@@ -215,27 +223,12 @@ const ApplyForService = () => {
   };
 
   const getServicePrice = (serviceType) => {
-    if (!serviceType) return 0;
-    
-    let price = 0;
-    if (servicePrices && servicePrices[serviceType]) {
-      price = servicePrices[serviceType].amount || 0;
-    } else {
-      const defaultPrices = {
-        'Birth Certificate': 5000,
-        'Marriage Certificate': 10000,
-        'Local Government of Origin': 3000,
-        'Business Permit': 15000,
-        'Building Plan Approval': 20000,
-        'Tax Clearance Certificate': 5000,
-        'Market Stall Permit': 8000,
-        'Social Welfare': 3000,
-        'Village Directory': 2000,
-        'Other': 5000
-      };
-      price = defaultPrices[serviceType] || 0;
-    }
-    return price;
+    if (!serviceType) return null;
+
+    const price = servicePrices?.[serviceType]?.amount;
+    const numericPrice = Number(price);
+
+    return Number.isFinite(numericPrice) ? numericPrice : null;
   };
 
   // Update price when service type changes in dropdown
@@ -248,7 +241,7 @@ const ApplyForService = () => {
 
   if (submitted) {
     // ✅ Use the stored price for display
-    const displayPrice = selectedServicePrice || getServicePrice(submittedServiceType);
+    const displayPrice = submittedServicePrice ?? selectedServicePrice ?? getServicePrice(submittedServiceType);
     
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -314,6 +307,9 @@ const ApplyForService = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+              Service fees are controlled by the administrator and are updated from the official service pricing system.
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 <FaUser className="inline mr-2 text-[#006400]" />
@@ -383,13 +379,26 @@ const ApplyForService = () => {
                   );
                 })}
               </select>
-              {servicePrice > 0 && (
-                <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
-                  <p className="text-sm text-green-700">
-                    <span className="font-semibold">Service Fee:</span> ₦{servicePrice.toLocaleString()}
-                  </p>
+              {pricesLoading ? (
+                <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500">
+                  Loading current service prices…
                 </div>
-              )}
+              ) : priceError ? (
+                <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  {priceError}
+                </div>
+              ) : servicePrice !== null ? (
+                <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="text-sm text-green-700">
+                    <span className="font-semibold">Current service fee:</span> ₦{servicePrice.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-green-600 mt-1">This amount is set by the administrator.</p>
+                </div>
+              ) : formData.service_type ? (
+                <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+                  This service has not been configured for payment yet.
+                </div>
+              ) : null}
             </div>
 
             {isLGA && (
@@ -502,7 +511,7 @@ const ApplyForService = () => {
             <div className="flex flex-wrap gap-3 pt-4">
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || pricesLoading || !formData.service_type || servicePrice === null}
                 className="flex-1 bg-[#006400] hover:bg-[#005a00] text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-[#006400]/30 disabled:opacity-50 flex items-center justify-center space-x-2"
               >
                 {submitting ? (
